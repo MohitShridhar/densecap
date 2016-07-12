@@ -1,4 +1,6 @@
 local ros = require 'ros'
+require 'ros.actionlib.ActionServer'
+local actionlib = ros.actionlib
 
 require 'image'
 gm = require 'graphicsmagick'
@@ -32,7 +34,7 @@ cmd:option('-num_proposals', 50)
 cmd:option('-boxes_to_show', 10)
 cmd:option('-webcam_fps', 60)
 cmd:option('-gpu', 0)
-cmd:option('-timing', 0)
+cmd:option('-timing', 1)
 cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
@@ -40,16 +42,16 @@ cmd:option('-rpn_nms_thresh', 0.7)
 cmd:option('-final_nms_thresh', 0.3)
 cmd:option('-use_cudnn', 1)
 
-ros.init('densecap_service')
+ros.init('densecap_actionserver')
 nh = ros.NodeHandle()
 
 spinner = ros.AsyncSpinner()
 spinner:start()
 
-service_queue = ros.CallbackQueue()
+-- service_queue = ros.CallbackQueue()
 
-srv_spec = ros.SrvSpec('action_controller/DenseCaption')
-print(srv_spec)
+-- srv_spec = ros.SrvSpec('action_controller/DenseCaption')
+-- print(srv_spec)
 
 local function grab_frame(opt, img_orig)
   local timer = nil
@@ -188,16 +190,18 @@ local function process(img)
     timer:reset()
   end
 
+  local boxes_xywh, captions, scores
+  local boxes_xcycwh
   if not paused then
     local img_orig, img_caffe = grab_frame(opt, img)
-    local boxes_xcycwh, captions, scores = run_model(opt, info, model, img_caffe)
+    boxes_xcycwh, captions, scores = run_model(opt, info, model, img_caffe)
 
     if prev_boxes then
       boxes_xcycwh, captions = temporal_smoothing(prev_boxes, prev_captions,
                                                   boxes_xcycwh, captions)
     end
 
-    local boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
+    boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
     local scale = img_orig:size(2) / img_caffe:size(3)
     boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
 
@@ -215,31 +219,81 @@ local function process(img)
     print(string.format(msg, time, fps))
     print ''
   end
+
+  return boxes_xywh, captions, scores
 end
 
-function imageServiceHandler(request, response, header)
-  print('[!] handler call')
+-- function imageServiceHandler(request, response, header)
+--   print('[!] handler call')
+
+--   -- Convert to torch image tensor
+--   local img_tensor = torch.reshape(request.input.data, torch.LongStorage{request.input.height, request.input.width, 3})
+--   local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+--   local img = img_gm:toTensor('double','RGB', 'DHW')
+
+--   -- Loading specified settings
+--   opt.model_image_size = request.model_image_size
+--   opt.num_proposals = request.num_proposals
+--   opt.boxes_to_show = request.boxes_to_show
+--   opt.rpn_nms_thresh = request.rpn_nms_thresh
+--   opt.final_nms_thresh = request.final_nms_thresh
+
+--   local boxes_xywh, captions, scores = process(img)
+
+--   response.n = scores:size(1)
+--   response.captions = captions
+--   response.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
+--   response.scores = scores:reshape(scores:size(1)):float()
+
+--   return true
+-- end
+
+
+-- server = nh:advertiseService('/dense_captioning', srv_spec, imageServiceHandler, service_queue)
+-- print('name: ' .. server:getService())
+-- print('service server running, call "rosservice call /dense_captioning" to send a request to the service.')
+
+
+local function ActionServer_Goal(goal_handle)
+  ros.INFO("ActionServer_Goal")
+  local g = goal_handle:getGoal().goal
+
+  print (g)
 
   -- Convert to torch image tensor
-  local img_tensor = torch.reshape(request.input.data, torch.LongStorage{request.input.height, request.input.width, 3})
-  local img_gm = gm.Image(img_tensor, 'BGR', 'DWH')
+  local img_tensor = torch.reshape(g.input.data, torch.LongStorage{g.input.height, g.input.width, 3})
+  local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
   local img = img_gm:toTensor('double','RGB', 'DHW')
 
   -- Loading specified settings
-  opt.model_image_size = request.model_image_size
-  opt.num_proposals = request.num_proposals
-  opt.boxes_to_show = request.boxes_to_show
-  opt.rpn_nms_thresh = request.rpn_nms_thresh
-  opt.final_nms_thresh = request.final_nms_thresh
+  opt.model_image_size = g.model_image_size
+  opt.num_proposals = g.num_proposals
+  opt.boxes_to_show = g.boxes_to_show
+  opt.rpn_nms_thresh = g.rpn_nms_thresh
+  opt.final_nms_thresh = g.final_nms_thresh
 
-  process(img)
+  goal_handle:setAccepted('yip')
+  
+  local boxes_xywh, captions, scores = process(img)
 
-  return true
+  local r = goal_handle:createResult()
+  r.n = scores:size(1)
+  r.captions = captions
+  r.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
+  r.scores = scores:reshape(scores:size(1)):float()
+
+  goal_handle:setSucceeded(r, 'done')
 end
 
-server = nh:advertiseService('/dense_captioning', srv_spec, imageServiceHandler, service_queue)
-print('name: ' .. server:getService())
-print('service server running, call "rosservice call /dense_captioning" to send a request to the service.')
+
+-- Action server initialization
+local as = actionlib.ActionServer(nh, 'dense_caption', 'action_controller/DenseCaption')
+
+as:registerGoalCallback(ActionServer_Goal)
+
+print('Starting Dense Caption action server...')
+as:start()
+
 
 opt = cmd:parse(arg)
 dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
@@ -276,13 +330,15 @@ timer = torch.Timer()
 local s = ros.Duration(0.001)
 while ros.ok() do
   s:sleep()
-  if not service_queue:isEmpty() then
-    print('[!] incoming service call')
-    service_queue:callAvailable()
-  end
+  -- if not service_queue:isEmpty() then
+  --   print('[!] incoming service call')
+  --   service_queue:callAvailable()
+  -- end
 
   ros.spinOnce()
 end
 
+as:shutdown()
+nh:shutdown()
 server:shutdown()
 ros.shutdown()

@@ -2,11 +2,12 @@
 
 import rospy
 from sensor_msgs.msg import Image
-from action_controller.srv import DenseCaption
 
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 
+import actionlib
+import action_controller.msg
 
 def pub_image():
     rospy.init_node('ImagePublisher', anonymous=True)
@@ -17,16 +18,30 @@ def pub_image():
     # I want to publish the Canny Edge Image and the original Image
     msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
 
-    rospy.wait_for_service('dense_captioning')
-    try:
-        densecap_srv = rospy.ServiceProxy('dense_captioning', DenseCaption)
-        resp1 = densecap_srv(msg_frame, 250, 50, 10, 0.7, 0.3)
-        # return resp1.su
-    except rospy.ServiceException, e:
-        print "Service call failed: %s"%e
 
+    client = actionlib.SimpleActionClient('dense_caption', action_controller.msg.DenseCaptionAction)
+    
+    # Waits until the action server has started up and started
+    # listening for goals.
+    client.wait_for_server()
+    
+    # Creates a goal to send to the action server.
+    goal = action_controller.msg.DenseCaptionGoal(msg_frame, 400, 50, 10, 0.7, 0.3)
+    
+    # Sends the goal to the action server.
+    client.send_goal(goal, done_cb=done_cb)
+    
+    # Waits for the server to finish performing the action.
+    client.wait_for_result()
+    
+    # Prints out the result of executing the action
+    return client.get_result()  # A FibonacciResult
+    
+    print "Not waiting for the result anymore"
 
-    print "Done"
+def done_cb(goal_status, result):
+    print 'Done'
+    print result
 
 
 if __name__ == '__main__':
