@@ -1,3 +1,7 @@
+require 'torch'
+require 'nn'
+require 'nngraph'
+
 
 local eval_utils = require 'eval.eval_utils'
 local utils = require 'densecap.utils'

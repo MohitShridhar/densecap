@@ -13,7 +13,7 @@ def pub_image():
     rospy.init_node('ImagePublisher', anonymous=True)
 
 
-    img = -cv2.imread('terman_eng.jpg',cv2.IMREAD_COLOR)
+    img = cv2.imread('zebra.jpg',cv2.IMREAD_COLOR)
 
     # I want to publish the Canny Edge Image and the original Image
     msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
@@ -26,7 +26,7 @@ def pub_image():
     client.wait_for_server()
     
     # Creates a goal to send to the action server.
-    goal = action_controller.msg.DenseCaptionGoal(msg_frame, 400, 50, 10, 0.7, 0.3)
+    goal = action_controller.msg.DenseCaptionGoal(msg_frame, 300, 50, 20, 0.7, 0.3)
     
     # Sends the goal to the action server.
     client.send_goal(goal, done_cb=done_cb)

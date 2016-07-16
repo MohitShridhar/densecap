@@ -327,6 +327,16 @@ function DenseCapModel:forward_test(input)
 end
 
 
+function DenseCapModel:language_query(input, query)
+
+  local boxes_xcycwh, feats = self:extractFeatures(input)
+  print(feats:size())
+  -- print(feats)
+
+end
+
+
+
 function DenseCapModel:setGroundTruth(gt_boxes, gt_labels)
   self.gt_boxes = gt_boxes
   self.gt_labels = gt_labels

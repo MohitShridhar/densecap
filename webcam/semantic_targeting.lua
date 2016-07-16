@@ -29,10 +29,10 @@ cmd:option('-checkpoint',
   'data/models/densecap/densecap-pretrained-vgg16.t7')
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
-cmd:option('-model_image_size', 320)
+cmd:option('-model_image_size', 300)
 cmd:option('-num_proposals', 50)
 cmd:option('-boxes_to_show', 10)
-cmd:option('-webcam_fps', 60)
+cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
 cmd:option('-timing', 1)
 cmd:option('-detailed_timing', 0)
@@ -47,11 +47,6 @@ nh = ros.NodeHandle()
 
 spinner = ros.AsyncSpinner()
 spinner:start()
-
--- service_queue = ros.CallbackQueue()
-
--- srv_spec = ros.SrvSpec('action_controller/DenseCaption')
--- print(srv_spec)
 
 local function grab_frame(opt, img_orig)
   local timer = nil
@@ -91,6 +86,9 @@ local function run_model(opt, info, model, img_caffe)
     model.timing = opt.detailed_timing
   end
   local boxes_xcycwh, scores, captions = model:forward_test(img_caffe:cuda())
+
+  -- model:language_query(img_caffe:cuda(), "Test")
+
   if opt.timing == 1 then
     cutorch.synchronize()
     print(string.format('    model_forward took %f', model_timer:time().real))
@@ -223,36 +221,6 @@ local function process(img)
   return boxes_xywh, captions, scores
 end
 
--- function imageServiceHandler(request, response, header)
---   print('[!] handler call')
-
---   -- Convert to torch image tensor
---   local img_tensor = torch.reshape(request.input.data, torch.LongStorage{request.input.height, request.input.width, 3})
---   local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
---   local img = img_gm:toTensor('double','RGB', 'DHW')
-
---   -- Loading specified settings
---   opt.model_image_size = request.model_image_size
---   opt.num_proposals = request.num_proposals
---   opt.boxes_to_show = request.boxes_to_show
---   opt.rpn_nms_thresh = request.rpn_nms_thresh
---   opt.final_nms_thresh = request.final_nms_thresh
-
---   local boxes_xywh, captions, scores = process(img)
-
---   response.n = scores:size(1)
---   response.captions = captions
---   response.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
---   response.scores = scores:reshape(scores:size(1)):float()
-
---   return true
--- end
-
-
--- server = nh:advertiseService('/dense_captioning', srv_spec, imageServiceHandler, service_queue)
--- print('name: ' .. server:getService())
--- print('service server running, call "rosservice call /dense_captioning" to send a request to the service.')
-
 
 local function ActionServer_Goal(goal_handle)
   ros.INFO("ActionServer_Goal")
@@ -262,10 +230,12 @@ local function ActionServer_Goal(goal_handle)
 
   -- Convert to torch image tensor
   local img_tensor = torch.reshape(g.input.data, torch.LongStorage{g.input.height, g.input.width, 3})
-  local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  -- local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  local img_gm = gm.Image(img_tensor, 'BGR', 'DWH')
+
   local img = img_gm:toTensor('double','RGB', 'DHW')
 
-  -- Loading specified settings
+  -- Loading specified settings (TODO: not reinitialized)
   opt.model_image_size = g.model_image_size
   opt.num_proposals = g.num_proposals
   opt.boxes_to_show = g.boxes_to_show
@@ -330,11 +300,6 @@ timer = torch.Timer()
 local s = ros.Duration(0.001)
 while ros.ok() do
   s:sleep()
-  -- if not service_queue:isEmpty() then
-  --   print('[!] incoming service call')
-  --   service_queue:callAvailable()
-  -- end
-
   ros.spinOnce()
 end
 
