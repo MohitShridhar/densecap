@@ -367,6 +367,10 @@ function DenseCapModel:language_query(input, query)
 
   print (boxes:sub(min_idx, min_idx))
 
+  local scores = torch.FloatTensor(1)
+  scores[{1}] = 1.0
+
+  return boxes:sub(min_idx, min_idx), scores, {"text"}
   -- print (captioning_loss)
 
   -- local query_boxes = torch.CudaTensor(1, boxes:size(1), boxes:size(2))

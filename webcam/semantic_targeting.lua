@@ -87,11 +87,11 @@ local function run_model(opt, info, model, img_caffe)
   end
 
 ----
-  model:language_query(img_caffe:cuda(), "wooden chair on the carpet")
+  local boxes_xcycwh, scores, captions = model:language_query(img_caffe:cuda(), "a lamp on the desk")
 
 ----
 
-  local boxes_xcycwh, scores, captions = model:forward_test(img_caffe:cuda())
+  -- local boxes_xcycwh, scores, captions = model:forward_test(img_caffe:cuda())
 
 
 
