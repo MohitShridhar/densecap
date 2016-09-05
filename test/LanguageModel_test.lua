@@ -32,7 +32,7 @@ function simpleTest(dtype)
     local N = 20
     local image_vecs = torch.randn(N, D):type(dtype)
     local gt_seq = torch.LongTensor(N, T):random(V+1):add(-1)
-
+    
     local out = lm:forward{image_vecs, gt_seq}
     check_dims(out, {N, T + 2, V + 1})
   end

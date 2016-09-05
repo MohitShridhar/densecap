@@ -12,6 +12,7 @@ require 'densecap.modules.PosSlicer'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
+local inspect = require('inspect')
 
 
 local DenseCapModel, parent = torch.class('DenseCapModel', 'nn.Module')
@@ -322,6 +323,7 @@ function DenseCapModel:forward_test(input)
   local final_boxes = output[4]
   local objectness_scores = output[1]
   local captions = output[5]
+  -- print (captions)
   local captions = self.nets.language_model:decodeSequence(captions)
   return final_boxes, objectness_scores, captions
 end
@@ -329,9 +331,89 @@ end
 
 function DenseCapModel:language_query(input, query)
 
-  local boxes_xcycwh, feats = self:extractFeatures(input)
-  print(feats:size())
-  -- print(feats)
+  local boxes, feats = self:extractFeatures(input)
+  local indexes = self.nets.language_model:encode(query)
+
+  local V = self.nets.language_model.vocab_size
+  local T = self.nets.language_model.seq_length
+  local query_seq = torch.LongTensor(boxes:size(1), T):random(V+1):add(-1):type('torch.CudaTensor')
+
+  for i=1,query_seq:size(1) do
+    for j=1,T do
+      query_seq[{i, j}] = indexes[j]
+    end
+  end
+
+
+  local lm_output = self.nets.language_model:forward{feats, query_seq}
+  -- print (lm_output:size())
+
+  local target = self.nets.language_model:getTarget(query_seq)
+
+  local min_loss = 100000
+  local min_idx = -1
+
+  for i=1,lm_output:size(1) do
+    local captioning_loss = self.crits.lm_crit:forward(lm_output:sub(i, i), target:sub(i, i))
+    captioning_loss = captioning_loss * self.opt.captioning_weight
+
+    if (captioning_loss < min_loss) then
+      min_loss = captioning_loss
+      min_idx = i
+    end
+
+    print (captioning_loss)
+  end
+
+  print (boxes:sub(min_idx, min_idx))
+
+  -- print (captioning_loss)
+
+  -- local query_boxes = torch.CudaTensor(1, boxes:size(1), boxes:size(2))
+  -- query_boxes[1] = boxes
+
+  -- local V = self.nets.language_model.vocab_size
+  -- local query_seq = torch.LongTensor(1, boxes:size(1), 15):random(V+1):add(-1):type('torch.CudaTensor')  
+
+  -- for i=1,query_seq:size(2) do
+  --   query_seq[{1, i, 1}] =  3999
+  --   query_seq[{1, i, 2}] =  9323
+  --   query_seq[{1, i, 3}] =  6819  
+  --   query_seq[{1, i, 4}] =  10510
+  --   query_seq[{1, i, 5}] =  6819  
+  --   query_seq[{1, i, 6}] =  10510
+  --   query_seq[{1, i, 7}] =  3077
+  --   query_seq[{1, i, 8}] =  6819  
+  --   query_seq[{1, i, 8}] =  10510
+  --   query_seq[{1, i, 10}] = 3077
+  --   query_seq[{1, i, 11}] = 6038 
+  --   query_seq[{1, i, 12}] = 5249  
+  --   query_seq[{1, i, 13}] = 10510
+  --   query_seq[{1, i, 14}] = 3077
+  --   query_seq[{1, i, 15}] = 6038
+  -- end
+
+
+ --  self:training()
+ -- -- Run the model forward
+ --  self:setGroundTruth(query_boxes, query_seq)
+ --  local out = self:forward(input)
+
+ --  -- Pick out the outputs we care about
+ --  local lm_output = out[5]
+ --  local query_boxes = out[6]
+ --  local query_labels = out[7]
+
+ --  local target = self.nets.language_model:getTarget(query_labels)
+ --  local captioning_loss = self.crits.lm_crit:forward(lm_output, target)
+ --  captioning_loss = captioning_loss * self.opt.captioning_weight
+
+
+ --  print ('CAPTIONING LOSS:----')
+ --  -- print (captioning_loss)
+ --  print (lm_output:size())
+ --  print (feats:size())
+ --  print ('--------------- END')
 
 end
 

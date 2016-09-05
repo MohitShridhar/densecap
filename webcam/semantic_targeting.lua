@@ -29,8 +29,8 @@ cmd:option('-checkpoint',
   'data/models/densecap/densecap-pretrained-vgg16.t7')
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
-cmd:option('-model_image_size', 300)
-cmd:option('-num_proposals', 50)
+cmd:option('-model_image_size', 150)
+cmd:option('-num_proposals', 60)
 cmd:option('-boxes_to_show', 10)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -85,9 +85,15 @@ local function run_model(opt, info, model, img_caffe)
     cutorch.synchronize()
     model.timing = opt.detailed_timing
   end
+
+----
+  model:language_query(img_caffe:cuda(), "wooden chair on the carpet")
+
+----
+
   local boxes_xcycwh, scores, captions = model:forward_test(img_caffe:cuda())
 
-  -- model:language_query(img_caffe:cuda(), "Test")
+
 
   if opt.timing == 1 then
     cutorch.synchronize()

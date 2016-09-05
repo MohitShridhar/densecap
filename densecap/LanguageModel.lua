@@ -5,6 +5,7 @@ local utils = require 'densecap.utils'
 
 
 local LM, parent = torch.class('nn.LanguageModel', 'nn.Module')
+local inspect = require('inspect')
 
 
 function LM:__init(opt)
@@ -102,6 +103,30 @@ function LM:decodeSequence(seq)
   return captions
 end
 
+
+
+function LM:encode(text)
+  local indexes = {}
+  local size = 0
+  for word in text:gmatch("%w+") do
+    -- Linear search (very inefficient; use a hash table or something) 
+    for i = 1, self.vocab_size do
+      if (word == self.idx_to_token[i]) then
+        table.insert(indexes, i)
+        size = size + 1
+      end
+    end
+  end
+
+  table.insert(indexes, self.vocab_size + 1)
+  while size < self.seq_length do
+    table.insert(indexes, 0)
+    size = size + 1
+  end
+
+  -- print (inspect(indexes))
+  return indexes
+end
 
 function LM:updateOutput(input)
   self.recompute_backward = true
