@@ -30,7 +30,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 150)
-cmd:option('-num_proposals', 60)
+cmd:option('-num_proposals', 80)
 cmd:option('-boxes_to_show', 10)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -72,7 +72,7 @@ local function grab_frame(opt, img_orig)
 end
 
 
-local function run_model(opt, info, model, img_caffe)
+local function run_model(opt, info, model, img_caffe, frame_id, store_features)
   local timer = nil
   if opt.timing == 1 then
     cutorch.synchronize()
@@ -86,14 +86,13 @@ local function run_model(opt, info, model, img_caffe)
     model.timing = opt.detailed_timing
   end
 
-----
-  local boxes_xcycwh, scores, captions = model:language_query(img_caffe:cuda(), "a lamp on the desk")
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
 
-----
-
-  -- local boxes_xcycwh, scores, captions = model:forward_test(img_caffe:cuda())
-
-
+  if store_features then
+    history_feats[frame_id] = feats:type('torch.LongTensor')
+    history_captions[frame_id] = captions
+    history_boxes_xcycwh[frame_id] = boxes_xcycwh:type('torch.LongTensor')
+  end
 
   if opt.timing == 1 then
     cutorch.synchronize()
@@ -113,6 +112,44 @@ local function run_model(opt, info, model, img_caffe)
   end
 
   return boxes_xcycwh:float(), captions, scores
+end
+
+
+local function image_query(opt, info, model, query, min_loss_threshold)
+  local timer = nil
+  if opt.timing == 1 then
+    cutorch.synchronize()
+    timer = torch.Timer()
+  end
+
+  local model_timer = nil
+  if opt.timing == 1 then
+    model_timer = torch.Timer()
+    cutorch.synchronize()
+    model.timing = opt.detailed_timing
+  end
+
+  local top_k_ids, top_k_boxes, top_k_losses = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
+
+  if opt.timing == 1 then
+    cutorch.synchronize()
+    print(string.format('    model_forward took %f', model_timer:time().real))
+    if opt.detailed_timing == 1 then
+      for k, v in pairs(model.stats.times) do
+        print(string.format('    %s took %f', k, v))
+      end
+    end
+  end
+  -- local num_boxes = math.min(boxes_xcycwh:size(1), opt.boxes_to_show)
+  -- boxes_xcycwh = boxes_xcycwh[{{1, num_boxes}}]
+
+  if opt.timing == 1 then
+    cutorch.synchronize()
+    print('run_model took ', timer:time().real)
+  end
+
+  return top_k_ids, top_k_boxes, top_k_losses
+
 end
 
 
@@ -188,7 +225,7 @@ local function temporal_smoothing(prev_boxes, prev_captions, cur_boxes, cur_capt
 end
 
 
-local function process(img)
+local function process(img, frame_id, store_features)
   if opt.timing == 1 then
     cutorch.synchronize()
     timer:reset()
@@ -198,16 +235,20 @@ local function process(img)
   local boxes_xcycwh
   if not paused then
     local img_orig, img_caffe = grab_frame(opt, img)
-    boxes_xcycwh, captions, scores = run_model(opt, info, model, img_caffe)
+    boxes_xcycwh, captions, scores = run_model(opt, info, model, img_caffe, frame_id, store_features)
 
-    if prev_boxes then
-      boxes_xcycwh, captions = temporal_smoothing(prev_boxes, prev_captions,
-                                                  boxes_xcycwh, captions)
-    end
+    -- if prev_boxes then
+    --   boxes_xcycwh, captions = temporal_smoothing(prev_boxes, prev_captions,
+    --                                               boxes_xcycwh, captions)
+    -- end
 
     boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
     local scale = img_orig:size(2) / img_caffe:size(3)
     boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
+
+    if (store_features) then
+      history_boxes_xywh[frame_id] = boxes_xywh:type('torch.LongTensor')
+    end
 
     win = show_results(opt, img_orig, img_caffe, win, boxes_xywh, captions)
 
@@ -228,8 +269,32 @@ local function process(img)
 end
 
 
-local function ActionServer_Goal(goal_handle)
-  ros.INFO("ActionServer_Goal")
+local function search(query, min_loss_threshold)
+  if opt.timing == 1 then
+    cutorch.synchronize()
+    timer:reset()
+  end
+
+  local boxes_xcycwh, captions, scores
+  if not paused then
+    top_k_ids, top_k_boxes, top_k_losses = image_query(opt, info, model, query, min_loss_threshold)
+  end
+
+  if opt.timing == 1 then
+    cutorch.synchronize()
+    local time = timer:time().real
+    local fps = 1.0 / time
+    local msg = 'Iteration took %.3f (%.2f FPS)'
+    print(string.format(msg, time, fps))
+    print ''
+  end
+
+  return top_k_ids, top_k_boxes, top_k_losses
+end
+
+
+local function Caption_ActionServer_Goal(goal_handle)
+  ros.INFO("Caption_ActionServer_Goal")
   local g = goal_handle:getGoal().goal
 
   print (g)
@@ -250,7 +315,7 @@ local function ActionServer_Goal(goal_handle)
 
   goal_handle:setAccepted('yip')
   
-  local boxes_xywh, captions, scores = process(img)
+  local boxes_xywh, captions, scores = process(img, g.frame_id, g.store_features)
 
   local r = goal_handle:createResult()
   r.n = scores:size(1)
@@ -262,14 +327,35 @@ local function ActionServer_Goal(goal_handle)
 end
 
 
+local function Query_ActionServer_Goal(goal_handle)
+  ros.INFO("Query_ActionServer_Goal")
+  local g = goal_handle:getGoal().goal
+
+  print (g)
+
+  -- IMPORTANT: check if history is available, otherwise reject the goal
+  goal_handle:setAccepted('yip')
+
+  local top_k_ids, top_k_boxes, top_k_losses = search(g.query, g.min_loss_threshold)
+
+  local r = goal_handle:createResult()
+  r.frame_ids = top_k_ids:reshape(top_k_ids:size(1)):int()
+  r.captioning_losses = top_k_losses:reshape(top_k_losses:size(1)):float()
+  r.boxes = top_k_boxes:reshape(top_k_boxes:size(1) * top_k_boxes:size(2)):float()
+
+  goal_handle:setSucceeded(r, 'done')
+end
+
 -- Action server initialization
-local as = actionlib.ActionServer(nh, 'dense_caption', 'action_controller/DenseCaption')
+local as_caption = actionlib.ActionServer(nh, 'dense_caption', 'action_controller/DenseCaption')
+local as_query = actionlib.ActionServer(nh, 'dense_query', 'action_controller/DenseImageQuery')
 
-as:registerGoalCallback(ActionServer_Goal)
+as_caption:registerGoalCallback(Caption_ActionServer_Goal)
+as_query:registerGoalCallback(Query_ActionServer_Goal)
 
-print('Starting Dense Caption action server...')
-as:start()
-
+print('Starting Dense Caption & Query action server...')
+as_caption:start()
+as_query:start()
 
 opt = cmd:parse(arg)
 dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
@@ -301,6 +387,12 @@ attached_handler = false
 paused = false
 prev_boxes, prev_captions = nil, nil
 
+-- NOTE: linear space complexity
+history_feats = {}
+history_captions = {}
+history_boxes_xcycwh = {}
+history_boxes_xywh = {}
+
 timer = torch.Timer()
 
 local s = ros.Duration(0.001)
@@ -309,7 +401,8 @@ while ros.ok() do
   ros.spinOnce()
 end
 
-as:shutdown()
+as_caption:shutdown()
+as_query:shutdown()
 nh:shutdown()
 server:shutdown()
 ros.shutdown()

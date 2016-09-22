@@ -273,6 +273,7 @@ function DenseCapModel:updateOutput(input)
     self.output[4] = final_boxes_float:index(1, idx):typeAs(self.output[4])
     self.output[1] = class_scores_float:index(1, idx):typeAs(self.output[1])
     self.output[5] = lm_output_float:index(1, idx):typeAs(self.output[5])
+    self.output[6] = self.nets.recog_base.output:float():index(1, idx):typeAs(self.output[4])
 
     -- TODO: In the old StnDetectionModel we also applied NMS to the
     -- variables dumped by the LocalizationLayer. Do we want to do that?
@@ -323,20 +324,43 @@ function DenseCapModel:forward_test(input)
   local final_boxes = output[4]
   local objectness_scores = output[1]
   local captions = output[5]
-  -- print (captions)
+  local feats = output[6]
   local captions = self.nets.language_model:decodeSequence(captions)
-  return final_boxes, objectness_scores, captions
+  return final_boxes, objectness_scores, captions, feats
+end
+
+function compare_cosine_score(a,b)
+  return torch.all(torch.gt(a[1], b[1]))
+end
+
+function compare_loss(a,b)
+  return a[5] < b[5]
 end
 
 
-function DenseCapModel:language_query(input, query)
+--[[
+-- language_query 
+--]]
+function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
 
-  local boxes, feats = self:extractFeatures(input)
+  -- sort existing captions according to cosine similarity
+  local similarity_table = {}
+  for frame_id, captions in pairs(history_captions) do
+    for n, caption in pairs(captions) do
+      local cosine_score = self:cosine_similarity(query, caption)
+      similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10} -- initialize loss to a large number 
+    end
+  end 
+
+  -- sort boxes by cosine similarity score
+  table.sort(similarity_table, compare_cosine_score)
+
+  -- encode query
   local indexes = self.nets.language_model:encode(query)
 
   local V = self.nets.language_model.vocab_size
   local T = self.nets.language_model.seq_length
-  local query_seq = torch.LongTensor(boxes:size(1), T):random(V+1):add(-1):type('torch.CudaTensor')
+  local query_seq = torch.LongTensor(1, T):type('torch.CudaTensor')
 
   for i=1,query_seq:size(1) do
     for j=1,T do
@@ -344,82 +368,104 @@ function DenseCapModel:language_query(input, query)
     end
   end
 
+  for b = 1,#similarity_table do
 
-  local lm_output = self.nets.language_model:forward{feats, query_seq}
-  -- print (lm_output:size())
+    local id = similarity_table[b][2]
+    local box_idx = similarity_table[b][3]
 
-  local target = self.nets.language_model:getTarget(query_seq)
+    local boxes = history_boxes_xcycwh[id]:sub(box_idx, box_idx):type('torch.CudaTensor')
+    local feats = history_feats[id]:sub(box_idx, box_idx):type('torch.CudaTensor')
 
-  local min_loss = 100000
-  local min_idx = -1
+    -- run model forward
+    local lm_output = self.nets.language_model:forward{feats, query_seq}
+    local target = self.nets.language_model:getTarget(query_seq)
 
-  for i=1,lm_output:size(1) do
-    local captioning_loss = self.crits.lm_crit:forward(lm_output:sub(i, i), target:sub(i, i))
-    captioning_loss = captioning_loss * self.opt.captioning_weight
+    local captioning_loss = 10e10
 
-    if (captioning_loss < min_loss) then
-      min_loss = captioning_loss
-      min_idx = i
+    -- pick the box that produces the least captioning loss
+    for i=1,lm_output:size(1) do
+      captioning_loss = self.crits.lm_crit:forward(lm_output:sub(i, i), target:sub(i, i))
+      captioning_loss = captioning_loss * self.opt.captioning_weight
+
+      similarity_table[b][5] = captioning_loss
+
+      print (captioning_loss)
+      -- print (similarity_table[b][4])
     end
 
-    print (captioning_loss)
+    if (captioning_loss < min_loss_threshold) then
+      break
+    end
+
   end
 
-  print (boxes:sub(min_idx, min_idx))
+  -- some formatting
+  -- local loss = torch.FloatTensor(1)
+  -- loss[{1}] = min_loss
 
-  local scores = torch.FloatTensor(1)
-  scores[{1}] = 1.0
+  -- return min_id, history_boxes_xywh[min_id]:sub(min_idx, min_idx), loss, {query}
 
-  return boxes:sub(min_idx, min_idx), scores, {"text"}
-  -- print (captioning_loss)
+  -- get top k captioning scores
+  local k = 3
+  table.sort(similarity_table, compare_loss)
 
-  -- local query_boxes = torch.CudaTensor(1, boxes:size(1), boxes:size(2))
-  -- query_boxes[1] = boxes
+  local top_k_ids = torch.LongTensor(k)
+  local top_k_losses = torch.LongTensor(k)
+  local top_k_boxes = torch.FloatTensor(k, 4)
+  
+  for b = 1,k do
+    local id = similarity_table[b][2]
+    local idx = similarity_table[b][3]
+    local loss = similarity_table[b][5]
 
-  -- local V = self.nets.language_model.vocab_size
-  -- local query_seq = torch.LongTensor(1, boxes:size(1), 15):random(V+1):add(-1):type('torch.CudaTensor')  
+    top_k_ids[b] = id
+    top_k_losses[b] = loss
+    top_k_boxes[b] = history_boxes_xywh[id]:sub(idx, idx)
+  end
 
-  -- for i=1,query_seq:size(2) do
-  --   query_seq[{1, i, 1}] =  3999
-  --   query_seq[{1, i, 2}] =  9323
-  --   query_seq[{1, i, 3}] =  6819  
-  --   query_seq[{1, i, 4}] =  10510
-  --   query_seq[{1, i, 5}] =  6819  
-  --   query_seq[{1, i, 6}] =  10510
-  --   query_seq[{1, i, 7}] =  3077
-  --   query_seq[{1, i, 8}] =  6819  
-  --   query_seq[{1, i, 8}] =  10510
-  --   query_seq[{1, i, 10}] = 3077
-  --   query_seq[{1, i, 11}] = 6038 
-  --   query_seq[{1, i, 12}] = 5249  
-  --   query_seq[{1, i, 13}] = 10510
-  --   query_seq[{1, i, 14}] = 3077
-  --   query_seq[{1, i, 15}] = 6038
-  -- end
-
-
- --  self:training()
- -- -- Run the model forward
- --  self:setGroundTruth(query_boxes, query_seq)
- --  local out = self:forward(input)
-
- --  -- Pick out the outputs we care about
- --  local lm_output = out[5]
- --  local query_boxes = out[6]
- --  local query_labels = out[7]
-
- --  local target = self.nets.language_model:getTarget(query_labels)
- --  local captioning_loss = self.crits.lm_crit:forward(lm_output, target)
- --  captioning_loss = captioning_loss * self.opt.captioning_weight
-
-
- --  print ('CAPTIONING LOSS:----')
- --  -- print (captioning_loss)
- --  print (lm_output:size())
- --  print (feats:size())
- --  print ('--------------- END')
+  return top_k_ids, top_k_boxes, top_k_losses
 
 end
+
+-- function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, query)
+
+--   local boxes, feats = self:extractFeatures(input)
+--   local indexes = self.nets.language_model:encode(query)
+
+--   local V = self.nets.language_model.vocab_size
+--   local T = self.nets.language_model.seq_length
+--   local query_seq = torch.LongTensor(boxes:size(1), T):type('torch.CudaTensor')
+
+--   for i=1,query_seq:size(1) do
+--     for j=1,T do
+--       query_seq[{i, j}] = indexes[j]
+--     end
+--   end
+
+--   local lm_output = self.nets.language_model:forward{feats, query_seq}
+--   local target = self.nets.language_model:getTarget(query_seq)
+
+--   local min_loss = 100000
+--   local min_idx = -1
+
+--   for i=1,lm_output:size(1) do
+--     local captioning_loss = self.crits.lm_crit:forward(lm_output:sub(i, i), target:sub(i, i))
+--     captioning_loss = captioning_loss * self.opt.captioning_weight
+
+--     if (captioning_loss < min_loss) then
+--       min_loss = captioning_loss
+--       min_idx = i
+--     end
+
+--     print (captioning_loss)
+--   end
+
+--   local loss = torch.FloatTensor(1)
+--   loss[{1}] = min_loss
+
+--   return boxes:sub(min_idx, min_idx), loss, {query}
+
+-- end
 
 
 
@@ -567,3 +613,19 @@ function DenseCapModel:forward_backward(data)
 
   return losses
 end
+
+
+--[[
+Find the cosine similarity between two given strings
+--]]
+function DenseCapModel:cosine_similarity(string_a, string_b)
+
+  local vec_a = torch.Tensor(self.nets.language_model:encode(string_a))
+  local vec_b = torch.Tensor(self.nets.language_model:encode(string_b))
+
+  cosine = nn.CosineDistance()
+  local score = cosine:forward({vec_a, vec_b})
+
+  return score
+end
+
