@@ -1,3 +1,4 @@
+require 'torch'
 
 local cjson = require 'cjson'
 local utils = require 'densecap.utils'

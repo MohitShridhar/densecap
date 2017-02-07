@@ -30,7 +30,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 150)
-cmd:option('-num_proposals', 80)
+cmd:option('-num_proposals', 100)
 cmd:option('-boxes_to_show', 10)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)

@@ -12,6 +12,7 @@ require 'densecap.modules.PosSlicer'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
+local eval_utils = require 'eval.eval_utils'
 local inspect = require('inspect')
 
 
@@ -333,6 +334,10 @@ function compare_cosine_score(a,b)
   return torch.all(torch.gt(a[1], b[1]))
 end
 
+function compare_meteor_score(a,b)
+  return a[1] > b[1]
+end
+
 function compare_loss(a,b)
   return a[5] < b[5]
 end
@@ -343,17 +348,27 @@ end
 --]]
 function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
 
-  -- sort existing captions according to cosine similarity
   local similarity_table = {}
-  for frame_id, captions in pairs(history_captions) do
-    for n, caption in pairs(captions) do
-      local cosine_score = self:cosine_similarity(query, caption)
-      similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10} -- initialize loss to a large number 
-    end
-  end 
 
-  -- sort boxes by cosine similarity score
-  table.sort(similarity_table, compare_cosine_score)
+  -- sort existing captions according to METEOR scores
+  local meteor_scores, records = self:compute_meteor(query, history_captions)
+  for i=1, #meteor_scores do
+    similarity_table[#similarity_table + 1] = {meteor_scores[i], records[i].frame_id, records[i].n, records[i].caption, 10e10}
+  end
+
+  table.sort(similarity_table, compare_meteor_score)
+
+  -- sort existing captions according to COSINE similarity
+  -- local similarity_table = {}
+  -- for frame_id, captions in pairs(history_captions) do
+  --   for n, caption in pairs(captions) do
+  --     local cosine_score = self:cosine_similarity(query, caption)
+  --     similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10} -- initialize loss to a large number 
+  --   end
+  -- end 
+  -- table.sort(similarity_table, compare_cosine_score)
+
+  -- print (inspect(similarity_table))
 
   -- encode query
   local indexes = self.nets.language_model:encode(query)
@@ -389,7 +404,8 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
 
       similarity_table[b][5] = captioning_loss
 
-      print (captioning_loss)
+      print (captioning_loss, similarity_table[b][4], similarity_table[b][1])
+      -- print (captioning_loss)
       -- print (similarity_table[b][4])
     end
 
@@ -410,7 +426,7 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   table.sort(similarity_table, compare_loss)
 
   local top_k_ids = torch.LongTensor(k)
-  local top_k_losses = torch.LongTensor(k)
+  local top_k_losses = torch.FloatTensor(k)
   local top_k_boxes = torch.FloatTensor(k, 4)
   
   for b = 1,k do
@@ -627,5 +643,33 @@ function DenseCapModel:cosine_similarity(string_a, string_b)
   local score = cosine:forward({vec_a, vec_b})
 
   return score
+end
+
+--[[
+Find the meteor scores for: query & history captions
+--]]
+function DenseCapModel:compute_meteor(query, history_captions)
+
+  records = {}
+  -- meteor_scores = {}
+
+  local similarity_table = {}
+  for frame_id, captions in pairs(history_captions) do
+    for n, caption in pairs(captions) do
+      local record = {}
+      record.candidate = query
+      record.references = {caption, caption}
+      record.frame_id = frame_id
+      record.n = n
+      record.caption = caption
+      table.insert(records, record)
+    end
+  end   
+
+  local blob = eval_utils.score_captions(records, 0)
+  -- meteor_scores[frame_id] = blob.scores
+  -- print (inspect(blob))
+
+  return blob.scores, records
 end
 
