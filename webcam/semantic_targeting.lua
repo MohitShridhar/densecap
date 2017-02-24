@@ -129,7 +129,7 @@ local function image_query(opt, info, model, query, min_loss_threshold)
     model.timing = opt.detailed_timing
   end
 
-  local top_k_ids, top_k_boxes, top_k_losses = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
 
   if opt.timing == 1 then
     cutorch.synchronize()
@@ -148,7 +148,7 @@ local function image_query(opt, info, model, query, min_loss_threshold)
     print('run_model took ', timer:time().real)
   end
 
-  return top_k_ids, top_k_boxes, top_k_losses
+  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time
 
 end
 
@@ -277,7 +277,7 @@ local function search(query, min_loss_threshold)
 
   local boxes_xcycwh, captions, scores
   if not paused then
-    top_k_ids, top_k_boxes, top_k_losses = image_query(opt, info, model, query, min_loss_threshold)
+    top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = image_query(opt, info, model, query, min_loss_threshold)
   end
 
   if opt.timing == 1 then
@@ -289,7 +289,7 @@ local function search(query, min_loss_threshold)
     print ''
   end
 
-  return top_k_ids, top_k_boxes, top_k_losses
+  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time
 end
 
 
@@ -336,12 +336,14 @@ local function Query_ActionServer_Goal(goal_handle)
   -- IMPORTANT: check if history is available, otherwise reject the goal
   goal_handle:setAccepted('yip')
 
-  local top_k_ids, top_k_boxes, top_k_losses = search(g.query, g.min_loss_threshold)
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = search(g.query, g.min_loss_threshold)
 
   local r = goal_handle:createResult()
   r.frame_ids = top_k_ids:reshape(top_k_ids:size(1)):int()
   r.captioning_losses = top_k_losses:reshape(top_k_losses:size(1)):float()
   r.boxes = top_k_boxes:reshape(top_k_boxes:size(1) * top_k_boxes:size(2)):float()
+  r.meteor_ranks = top_k_meteor_ranks:reshape(top_k_meteor_ranks:size(1)):int()
+  r.search_time = search_time
 
   goal_handle:setSucceeded(r, 'done')
 end

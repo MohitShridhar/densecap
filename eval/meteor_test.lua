@@ -8,7 +8,7 @@ records = {}
 -- record 1
 local record = {}
 record.candidate = 'a man riding a bicycle'
-record.references = {'trees in the background', 'trees in the background'}
+record.references = {'a woman riding a bicycle', 'a woman riding a bicycle'}
 table.insert(records, record)
 
 -- record 2

@@ -1,0 +1,89 @@
+{
+	"set": 
+	[
+		{
+			"query": "a man holding a rifle",
+			"gt_frame": 1
+		},		
+		{
+			"query": "a man riding a bicycle",
+			"gt_frame": 2
+		},		
+		{
+			"query": "a zebra sitting on the ground",
+			"gt_frame": 1
+		},		
+		{
+			"query": "a white lampshade",
+			"gt_frame": 3
+		},		
+		{
+			"query": "a red and white building",
+			"gt_frame": 2
+		},		
+		{
+			"query": "the fireplace next to the white door",
+			"gt_frame": 3
+		},		
+		{
+			"query": "the yellow hand of a clock",
+			"gt_frame": 5
+		},		
+		{
+			"query": "the tripod next to the plant",
+			"gt_frame": 6
+		},		
+		{
+			"query": "a vase",
+			"gt_frame": 3
+		},		
+		{
+			"query": "a yellow wing",
+			"gt_frame": 5
+		},		
+		{
+			"query": "a landed robot",
+			"gt_frame": 6
+		},		
+		{
+			"query": "the black object on the table next to the computer",
+			"gt_frame": 6
+		},		
+		{
+			"query": "the yellow bin",
+			"gt_frame": 6
+		},		
+		{
+			"query": "the church",
+			"gt_frame": 4
+		},		
+		{
+			"query": "the red object on the riding bike",
+			"gt_frame": 2
+		},		
+		{
+			"query": "the zebra tail",
+			"gt_frame": 1
+		},		
+		{
+			"query": "the name tag of the hunter",
+			"gt_frame": 1
+		},		
+		{
+			"query": "the v shape on the zebra",
+			"gt_frame": 1
+		},		
+		{
+			"query": "the silver bell on the clock",
+			"gt_frame": 5
+		},		
+		{
+			"query": "the blue sofa in the corner",
+			"gt_frame": 3
+		},		
+		{
+			"query": "the lawn without people",
+			"gt_frame": 2
+		}
+	]
+}

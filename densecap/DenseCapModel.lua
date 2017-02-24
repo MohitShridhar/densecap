@@ -1,6 +1,7 @@
 require 'torch'
 require 'nn'
 require 'nngraph'
+require 'cutorch'
 
 require 'densecap.LanguageModel'
 require 'densecap.LocalizationLayer'
@@ -353,13 +354,12 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   -- sort existing captions according to METEOR scores
   local meteor_scores, records = self:compute_meteor(query, history_captions)
   for i=1, #meteor_scores do
-    similarity_table[#similarity_table + 1] = {meteor_scores[i], records[i].frame_id, records[i].n, records[i].caption, 10e10}
+    similarity_table[#similarity_table + 1] = {meteor_scores[i], records[i].frame_id, records[i].n, records[i].caption, 10e10, -1}
   end
 
   table.sort(similarity_table, compare_meteor_score)
 
   -- sort existing captions according to COSINE similarity
-  -- local similarity_table = {}
   -- for frame_id, captions in pairs(history_captions) do
   --   for n, caption in pairs(captions) do
   --     local cosine_score = self:cosine_similarity(query, caption)
@@ -383,6 +383,10 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     end
   end
 
+  local timer = nil
+  cutorch.synchronize()
+  timer = torch.Timer()
+
   for b = 1,#similarity_table do
 
     local id = similarity_table[b][2]
@@ -400,20 +404,25 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     -- pick the box that produces the least captioning loss
     for i=1,lm_output:size(1) do
       captioning_loss = self.crits.lm_crit:forward(lm_output:sub(i, i), target:sub(i, i))
-      captioning_loss = captioning_loss * self.opt.captioning_weight
+      captioning_loss = captioning_loss * self.opt.captioning_weight -- * (1.0 / similarity_table[b][1]) 
 
       similarity_table[b][5] = captioning_loss
+      similarity_table[b][6] = b
 
       print (captioning_loss, similarity_table[b][4], similarity_table[b][1])
       -- print (captioning_loss)
       -- print (similarity_table[b][4])
     end
 
-    if (captioning_loss < min_loss_threshold) then
+    -- if (captioning_loss < min_loss_threshold) then
+    if (captioning_loss < min_loss_threshold) or b >= math.ceil(#similarity_table/10) then
       break
     end
 
   end
+
+  cutorch.synchronize()
+  local search_time = timer:time().real
 
   -- some formatting
   -- local loss = torch.FloatTensor(1)
@@ -428,18 +437,23 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   local top_k_ids = torch.LongTensor(k)
   local top_k_losses = torch.FloatTensor(k)
   local top_k_boxes = torch.FloatTensor(k, 4)
+  local top_k_meteor_ranks = torch.LongTensor(k)
   
   for b = 1,k do
+    -- if history_boxes_xywh[id] ~= nil then 
     local id = similarity_table[b][2]
     local idx = similarity_table[b][3]
     local loss = similarity_table[b][5]
+    local meteor_rank = similarity_table[b][6]
 
     top_k_ids[b] = id
     top_k_losses[b] = loss
     top_k_boxes[b] = history_boxes_xywh[id]:sub(idx, idx)
+    top_k_meteor_ranks[b] = meteor_rank
+    -- end
   end
 
-  return top_k_ids, top_k_boxes, top_k_losses
+  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time
 
 end
 

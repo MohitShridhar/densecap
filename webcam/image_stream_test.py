@@ -22,53 +22,53 @@ def pub_image():
     client.wait_for_server()
 
     # Generic Objects
-    img = cv2.imread('zebra.jpg',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('zebra.jpg',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
-    img = cv2.imread('terman_eng.jpg',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(2, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('terman_eng.jpg',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(2, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
-    img = cv2.imread('living_room.png',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(3, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('living_room.png',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(3, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
-    img = cv2.imread('pisa.jpeg',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(4, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('pisa.jpeg',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(4, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
-    img = cv2.imread('clock.png',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(5, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('clock.png',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(5, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
-    img = cv2.imread('results/ref1/office.jpg',cv2.IMREAD_COLOR)
-    imgs.append(img)
-    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
-    if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(6, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        client.send_goal(goal, done_cb=done_cb)
-        client.wait_for_result()
+    # img = cv2.imread('results/ref1/office.jpg',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(6, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
 
     # Amazon Picking Challenge
@@ -77,7 +77,7 @@ def pub_image():
     # imgs.append(img)
     # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     # if build_map:
-        # goal = action_controller.msg.DenseCaptionGoal(0, msg_frame, 1240, 500, 500, 0.7, 0.3, True)
+        # goal = action_controller.msg.DenseCaptionGoal(7, msg_frame, 1240, 500, 500, 0.7, 0.3, True)
         # client.send_goal(goal, done_cb=done_cb)
         # client.wait_for_result()
 
@@ -87,37 +87,54 @@ def pub_image():
     # imgs.append(img)
     # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     # if build_map:
-        # goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        # client.send_goal(goal, done_cb=done_cb)
-        # client.wait_for_result()
+    #     goal = action_controller.msg.DenseCaptionGoal(8, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
     # img = cv2.imread('results/ref3/grand.jpg',cv2.IMREAD_COLOR)
     # imgs.append(img)
     # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     # if build_map:
-        # goal = action_controller.msg.DenseCaptionGoal(2, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        # client.send_goal(goal, done_cb=done_cb)
-        # client.wait_for_result()
+    #     goal = action_controller.msg.DenseCaptionGoal(7, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
     # img = cv2.imread('results/ref3/on_the_wall.jpg',cv2.IMREAD_COLOR)
     # imgs.append(img)
     # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     # if build_map:
-        # goal = action_controller.msg.DenseCaptionGoal(3, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        # client.send_goal(goal, done_cb=done_cb)
-        # client.wait_for_result()
+    #     goal = action_controller.msg.DenseCaptionGoal(8, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()
 
     # img = cv2.imread('results/ref3/timezones.jpg',cv2.IMREAD_COLOR)
     # imgs.append(img)
     # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     # if build_map:
-        # goal = action_controller.msg.DenseCaptionGoal(4, msg_frame, 300, 50, 20, 0.7, 0.3, True)
-        # client.send_goal(goal, done_cb=done_cb)
-        # client.wait_for_result()    
+    #     goal = action_controller.msg.DenseCaptionGoal(9, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()    
 
+    # img = cv2.imread('results/ref1/tennis.jpg',cv2.IMREAD_COLOR)
+    # imgs.append(img)
+    # msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    # if build_map:
+    #     goal = action_controller.msg.DenseCaptionGoal(10, msg_frame, 300, 50, 20, 0.7, 0.3, True)
+    #     client.send_goal(goal, done_cb=done_cb)
+    #     client.wait_for_result()    
+
+
+    # Single Tabel Test
+    img = cv2.imread('table_medium.png',cv2.IMREAD_COLOR)
+    imgs.append(img)
+    msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
+    if build_map:
+        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 720, 50, 20, 0.7, 0.3, True)
+        client.send_goal(goal, done_cb=done_cb)
+        client.wait_for_result()    
 
     # Query test
-    query = "a man wearing a blue shirt"
+    query = "a banana"
     client = actionlib.SimpleActionClient('dense_query', action_controller.msg.DenseImageQueryAction)
     client.wait_for_server()    
     goal = action_controller.msg.DenseImageQueryGoal(query, 6.0)
