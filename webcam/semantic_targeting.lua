@@ -30,7 +30,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 150)
-cmd:option('-num_proposals', 100)
+cmd:option('-num_proposals', 50)
 cmd:option('-boxes_to_show', 10)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -333,7 +333,7 @@ local function Query_ActionServer_Goal(goal_handle)
 
   print (g)
 
-  -- IMPORTANT: check if history is available, otherwise reject the goal
+  -- TODO IMPORTANT: check if history is available, otherwise reject the goal
   goal_handle:setAccepted('yip')
 
   local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = search(g.query, g.min_loss_threshold)

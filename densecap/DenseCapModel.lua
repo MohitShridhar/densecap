@@ -113,6 +113,16 @@ function DenseCapModel:__init(opt)
   }
   self.nets.language_model = nn.LanguageModel(lm_opt)
 
+  -- Set up RefExp Language Model
+  local refexp_lm_opt = {
+    vocab_size = opt.vocab_size,
+    input_encoding_size = opt.rnn_encoding_size,
+    rnn_size = opt.rnn_size,
+    seq_length = opt.seq_length,
+    idx_to_token = opt.idx_to_token,
+    image_vector_dim=fc_dim,
+  }
+
   self.nets.recog_net = self:_buildRecognitionNet()
   self.net:add(self.nets.recog_net)
 
@@ -686,4 +696,187 @@ function DenseCapModel:compute_meteor(query, history_captions)
 
   return blob.scores, records
 end
+
+
+------------------------------------------------------------------------
+-- Licheng's layers
+------------------------------------------------------------------------
+--[[
+Perform a (testing-time) forward pass "GIVEN ROI_BOXES".
+It allows model to genenrate sentence for some specific regions.
+Input: data is a table with the following keys:
+- image: 1 x 3 x H x W array of pixel data
+- roi_boxes: B x 4 array of referred object boxes, in (xc, yc, w, h) form
+Returns:
+- objectness_scores: Tensor of shape (N, 1) giving objectness scores of
+  those boxes.
+- seqs: Tensor of shape (N, 15) giving sequence of idxs 
+- roi_codes: Tensor of shape (N, 4096) for boxes' visual representation
+- hidden_codes: Tensor of shape (N, 512) for boxes' hidden output at <END> token
+- captions: Array of length N giving output captions, decoded as strings.
+]]
+function DenseCapModel:forward_boxes(input, roi_boxes)
+  assert(input:dim() == 4)
+  local image_height, image_width = input:size(3), input:size(4)
+  assert(roi_boxes:dim() == 2 and roi_boxes:size(2) == 4)
+
+  self:evaluate()
+  -- go through conv_net
+  local conv1_out = self.nets.conv_net1:forward(input)
+  local cnn_features = self.nets.conv_net2:forward(conv1_out)
+  -- go through roi_pooling
+  self.nets.localization_layer.nets.roi_pooling:setImageSize(image_height, image_width)
+  local roi_feats = self.nets.localization_layer.nets.roi_pooling:forward{cnn_features[1], roi_boxes}
+  -- go through fc layers, computing roi_codes and score
+  local roi_codes = self.nets.recog_base:forward(roi_feats)
+  local objectness_scores = self.nets.objectness_branch:forward(roi_codes)
+  -- feed roi_codes to LSTM
+  -- local captions = self.nets.language_model:forward{roi_codes, roi_codes.new()}
+  local seqs, hidden_codes = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
+  local captions = self.nets.language_model:decodeSequence(seqs)
+
+  return {objectness_scores, seqs, roi_codes, hidden_codes, captions}
+end
+--[[
+Input: data is a table with the following keys:
+- image: 1 x 3 x H x W array of pixel data
+- roi_boxes: B x 4 array of referred object boxes, in (xc, yc, w, h) form
+Returns:
+- objectness_scores: Tensor of shape (N, 1) giving objectness scores of
+  those boxes.
+- beam_seqs: table of N (beam_size, T) seqs
+- roi_codes: Tensor of shape (N, 4096) for boxes' visual representation
+- beam_hidden_codes: table of N (beam_size, 512) hidden codes
+- beam_captions: table of N caption sets, each set consists of beam_size captions
+]]
+function DenseCapModel:forward_boxes_beams(input, roi_boxes, beam_size)
+  assert(input:dim() == 4)
+  local image_height, image_width = input:size(3), input:size(4)
+  assert(roi_boxes:dim() == 2 and roi_boxes:size(2) == 4)
+
+  self:evaluate()
+  -- go through conv_net
+  local conv1_out = self.nets.conv_net1:forward(input)
+  local cnn_features = self.nets.conv_net2:forward(conv1_out)
+  -- go through roi_pooling
+  self.nets.localization_layer.nets.roi_pooling:setImageSize(image_height, image_width)
+  local roi_feats = self.nets.localization_layer.nets.roi_pooling:forward{cnn_features[1], roi_boxes}
+  -- go through fc layers, computing roi_codes and score
+  local roi_codes = self.nets.recog_base:forward(roi_feats)
+  local objectness_scores = self.nets.objectness_branch:forward(roi_codes)
+  -- feed roi_codes to LSTM to get beam_size captions
+  self.nets.language_model.beam_size = beam_size
+  local _, Done_beams = self.nets.language_model:beamsearch(roi_codes, beam_size)
+  local beam_seqs = {}
+  local beam_captions = {}
+  for i = 1, #Done_beams do
+    beam_seqs[i] = Done_beams[i].seq
+    beam_captions[i] = self.nets.language_model:decodeSequence(beam_seqs[i])
+  end
+  -- fetch hidden codes for each roi's beams
+  local beam_hidden_codes = {}
+  for i = 1, #Done_beams do
+    local seq = beam_seqs[i]
+    local image_vectors = roi_codes[{ {i}, {} }]:expand(seq:size(1), 4096)
+    beam_hidden_codes[i] = self.nets.language_model:extract_hidden(image_vectors, seq)
+  end
+  -- reset beam_size and return
+  self.nets.language_model.beam_size = nil
+  return {objectness_scores, beam_seqs, roi_codes, beam_hidden_codes, beam_captions}
+end
+--[[
+Input: 
+- image: (1, 3, H, W)
+Returns:
+- xcycwh      : (N, 4)
+- scores      : (N, 1)
+- beam_seqs   : (N, 15) giving sequence of token idxs
+- roi_codes   : (N, 4096)
+- hidden_codes: (N, 512) hidden outputs at <END> token
+- captions    : Array of length N giving output captions, decoded as strings
+]]
+function DenseCapModel:extractAllFeatures(input)
+  assert(input:dim() == 4)
+  local H, W = input:size(3), input:size(4)
+  self.nets.localization_layer:setImageSize(H, W)
+
+  self:evaluate()
+  -- forward the net
+  local output = self.net:forward(input)
+  local final_boxes_float = output[4]:float()
+  local class_scores_float = output[1]:float()
+  local boxes_scores = torch.FloatTensor(final_boxes_float:size(1), 5)
+  local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_boxes_float)
+  boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
+  boxes_scores[{{}, 5}]:copy(class_scores_float)
+  local idx = box_utils.nms(boxes_scores, self.opt.final_nms_thresh)
+
+  local boxes_xcycwh = final_boxes_float:index(1, idx):typeAs(self.output[4])
+  local objectness_scores = class_scores_float:index(1, idx):typeAs(self.output[1])
+  local roi_codes = self.nets.recog_base.output:float():index(1, idx):typeAs(self.output[4])
+  -- feed roi_codes to LSTM
+  local seqs, hidden_codes = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
+  local captions = self.nets.language_model:decodeSequence(seqs)
+
+  return {boxes_xcycwh, objectness_scores, seqs, roi_codes, hidden_codes, captions}
+end
+--[[
+Input: Tensor of shape (1, 3, H, W) giving pixels for an input image.
+Returns:
+- xcycwh      : (N, 4)
+- scores      : (N, 1)
+- roi_codes   : (N, 4096)
+- beam_seqs: list of {seq}, each seq is of size (beam_size, 15)
+- beam_captions: list of {captions}, each captions consists of beam_size captions
+- beam_hidden_codes: list of {hidden_codes}, each hidden_codes is of size (beam_size, 512)
+--]]
+function DenseCapModel:forward_test_beams(input, beam_size, fetch_hidden_codes)
+  fetch_hidden_codes = fetch_hidden_codes or false
+  assert(beam_size >= 1, 'beam size has to be an integer greater than 0')
+  assert(input:dim() == 4)
+  local H, W = input:size(3), input:size(4)
+  self.nets.localization_layer:setImageSize(H, W)
+  self:evaluate()
+
+  -- forward the net with beam_size equal to default 1
+  local output = self.net:forward(input)
+  local final_boxes_float = output[4]:float()
+  local class_scores_float = output[1]:float()
+  local boxes_scores = torch.FloatTensor(final_boxes_float:size(1), 5)
+  local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_boxes_float)
+  boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
+  boxes_scores[{{}, 5}]:copy(class_scores_float)
+  local idx = box_utils.nms(boxes_scores, self.opt.final_nms_thresh)
+
+  local boxes_xcycwh = final_boxes_float:index(1, idx):typeAs(self.output[4])
+  local objectness_scores = class_scores_float:index(1, idx):typeAs(self.output[1])
+  local roi_codes = self.nets.recog_base.output:float():index(1, idx):typeAs(self.output[4])
+  
+  -- now we can set beam_size
+  self.nets.language_model.beam_size = beam_size
+  
+  -- feed roi_codes to beamsearch
+  local _, Done_beams = self.nets.language_model:beamsearch(roi_codes, beam_size) 
+  local beam_seqs = {}
+  local beam_captions = {}
+  for i = 1, #Done_beams do
+    beam_seqs[i] = Done_beams[i].seq
+    beam_captions[i] = self.nets.language_model:decodeSequence(beam_seqs[i])
+  end
+
+  -- fetch hidden codes for each roi's beams
+  local beam_hidden_codes = {}
+  if fetch_hidden_codes then
+    for i = 1, #Done_beams do
+      local seq = beam_seqs[i]
+      local image_vectors = roi_codes[{ {i}, {} }]:expand(seq:size(1), 4096)
+      beam_hidden_codes[i] = self.nets.language_model:extract_hidden(image_vectors, seq)
+    end
+  end
+  -- reset beam_size
+  self.nets.language_model.beam_size = nil
+  -- return
+  return {boxes_xcycwh, objectness_scores, roi_codes, beam_seqs, beam_captions, beam_hidden_codes}
+end
+
 

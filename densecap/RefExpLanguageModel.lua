@@ -4,11 +4,11 @@ require 'torch-rnn'
 local utils = require 'densecap.utils'
 
 
-local LM, parent = torch.class('nn.LanguageModel', 'nn.Module')
+local RefExLM, parent = torch.class('nn.RefExLanguageModel', 'nn.Module')
 local inspect = require('inspect')
 
 
-function LM:__init(opt)
+function RefExLM:__init(opt)
   parent.__init(self)
 
   opt = opt or {}
@@ -84,7 +84,7 @@ Inputs:
 Returns:
 - captions: Array of N strings
 --]]
-function LM:decodeSequence(seq)
+function RefExLM:decodeSequence(seq)
   local delimiter = ' '
   local captions = {}
   local N, T = seq:size(1), seq:size(2)
@@ -105,7 +105,7 @@ end
 
 
 
-function LM:encode(text)
+function RefExLM:encode(text)
   local indexes = {}
   local size = 0
   for word in text:gmatch("%w+") do
@@ -128,7 +128,7 @@ function LM:encode(text)
   return indexes
 end
 
-function LM:updateOutput(input)
+function RefExLM:updateOutput(input)
   self.recompute_backward = true
   local image_vectors = input[1]
   local gt_sequence = input[2]
@@ -170,7 +170,7 @@ Input:
 - gt_sequence: Tensor of shape (N, T) where each element is in the range [0, V];
   an entry of 0 is a null token.
 --]]
-function LM:getTarget(gt_sequence)
+function RefExLM:getTarget(gt_sequence)
   -- Make sure it's on CPU since we will loop over it
   local gt_sequence_long = gt_sequence:long()
   local N, T = gt_sequence:size(1), gt_sequence:size(2)
@@ -192,7 +192,7 @@ end
 --[[
 image_vectors: N x D
 --]]
-function LM:beamsearch(image_vectors, beam_size)
+function RefExLM:beamsearch(image_vectors, beam_size)
   beam_size = beam_size or 20
   local Done_beams = {}
   local N, T = image_vectors:size(1), self.seq_length
@@ -355,7 +355,7 @@ end
 
 
 
-function LM:sample(image_vectors)
+function RefExLM:sample(image_vectors)
   local N, T = image_vectors:size(1), self.seq_length
   local seq = torch.LongTensor(N, T):zero()
   local softmax = nn.SoftMax():type(image_vectors:type())
@@ -413,7 +413,7 @@ function LM:sample(image_vectors)
 end
 
 
-function LM:updateGradInput(input, gradOutput)
+function RefExLM:updateGradInput(input, gradOutput)
   if self.recompute_backward then
     self:backward(input, gradOutput)
   end
@@ -421,14 +421,14 @@ function LM:updateGradInput(input, gradOutput)
 end
 
 
-function LM:accGradParameters(input, gradOutput, scale)
+function RefExLM:accGradParameters(input, gradOutput, scale)
   if self.recompute_backward then
     self:backward(input, gradOutput, scale)
   end
 end
 
 
-function LM:backward(input, gradOutput, scale)
+function RefExLM:backward(input, gradOutput, scale)
   assert(self._forward_sampled == false, 'cannot backprop through sampling')
   assert(scale == nil or scale == 1.0)
   self.recompute_backward = false
@@ -439,29 +439,29 @@ function LM:backward(input, gradOutput, scale)
 end
 
 
-function LM:parameters()
+function RefExLM:parameters()
   return self.net:parameters()
 end
 
 
-function LM:training()
+function RefExLM:training()
   parent.training(self)
   self.net:training()
 end
 
 
-function LM:evaluate()
+function RefExLM:evaluate()
   parent.evaluate(self)
   self.net:evaluate()
 end
 
 
-function LM:clearState()
+function RefExLM:clearState()
   self.net:clearState()
 end
 
 
-function LM:parameters()
+function RefExLM:parameters()
   return self.net:parameters()
 end
 
@@ -469,7 +469,7 @@ end
 ------------------------------------------------------------------------
 -- Licheng's layers
 ------------------------------------------------------------------------
-function LM:sample_with_hidden(image_vectors)
+function RefExLM:sample_with_hidden(image_vectors)
   local N, T = image_vectors:size(1), self.seq_length
   local seq = torch.LongTensor(N, T):zero()
   local endH = torch.zeros(N, self.rnn_size):type(image_vectors:type())
@@ -538,7 +538,7 @@ input:
 output:
 - endH: (N, rnn_size)
 ]]
-function LM:extract_hidden(image_vectors, seq)
+function RefExLM:extract_hidden(image_vectors, seq)
   local N = image_vectors:size(1)
   assert(N == seq:size(1), 'image vectors and seq are not of same batch size.')
   local T = self.seq_length

@@ -123,18 +123,20 @@ def pub_image():
     #     client.send_goal(goal, done_cb=done_cb)
     #     client.wait_for_result()    
 
+    # build_map = False
 
     # Single Tabel Test
     img = cv2.imread('table_medium.png',cv2.IMREAD_COLOR)
     imgs.append(img)
     msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 720, 50, 20, 0.7, 0.3, True)
+        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 300, 40, 40, 0.7, 0.3, True)
+        # goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 720, 20, 20, 0.7, 0.3, True)
         client.send_goal(goal, done_cb=done_cb)
         client.wait_for_result()    
 
     # Query test
-    query = "a banana"
+    query = "the green box"
     client = actionlib.SimpleActionClient('dense_query', action_controller.msg.DenseImageQueryAction)
     client.wait_for_server()    
     goal = action_controller.msg.DenseImageQueryGoal(query, 6.0)
