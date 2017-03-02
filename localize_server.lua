@@ -28,7 +28,7 @@ cmd:option('-checkpoint',
   'data/models/densecap/densecap-pretrained-vgg16.t7')
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
-cmd:option('-model_image_size', 240)
+cmd:option('-model_image_size', 720)
 cmd:option('-num_proposals', 100)
 cmd:option('-boxes_to_show', 100)
 cmd:option('-webcam_fps', 1)
@@ -72,14 +72,23 @@ local function Localize_Action_Server(goal_handle)
 
   goal_handle:setAccepted('yip')
   
+  -- compute boxes
   local img_orig, img_caffe = grab_frame(opt, img)
-  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:float())
 
+  -- compute fc7 features for whole image
+  local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
+  local out = model:forward_boxes(img_caffe:float(), whole_img_roi)
+  local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
+
+  -- scale boxes to image size
   boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
   local scale = img_orig:size(2) / img_caffe:size(3)
   boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
 
+  -- return results
   local r = goal_handle:createResult()
+  r.fc7_img = f_roi_codes:reshape(f_roi_codes:size(2)):float()
   r.fc7_vecs = feats:reshape(feats:size(1) * feats:size(2)):float()
   r.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
   r.scores = scores:reshape(scores:size(1)):float()
@@ -99,7 +108,9 @@ print('Starting Dense Localization action server...')
 as_localize_server:start()
 
 opt = cmd:parse(arg)
-dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+-- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+dtype, use_cudnn = utils.setup_gpus(-1, 0)
+
 
 -- Load the checkpoint
 print('loading checkpoint from ' .. opt.checkpoint)
