@@ -4,11 +4,11 @@ require 'torch-rnn'
 local utils = require 'densecap.utils'
 
 
-local RefExLM, parent = torch.class('nn.RefExLanguageModel', 'nn.Module')
+local RefExpLM, parent = torch.class('nn.RefExpLanguageModel', 'nn.Module')
 local inspect = require('inspect')
 
 
-function RefExLM:__init(opt)
+function RefExpLM:__init(opt)
   parent.__init(self)
 
   opt = opt or {}
@@ -84,7 +84,7 @@ Inputs:
 Returns:
 - captions: Array of N strings
 --]]
-function RefExLM:decodeSequence(seq)
+function RefExpLM:decodeSequence(seq)
   local delimiter = ' '
   local captions = {}
   local N, T = seq:size(1), seq:size(2)
@@ -105,7 +105,7 @@ end
 
 
 
-function RefExLM:encode(text)
+function RefExpLM:encode(text)
   local indexes = {}
   local size = 0
   for word in text:gmatch("%w+") do
@@ -128,7 +128,7 @@ function RefExLM:encode(text)
   return indexes
 end
 
-function RefExLM:updateOutput(input)
+function RefExpLM:updateOutput(input)
   self.recompute_backward = true
   local image_vectors = input[1]
   local gt_sequence = input[2]
@@ -170,7 +170,7 @@ Input:
 - gt_sequence: Tensor of shape (N, T) where each element is in the range [0, V];
   an entry of 0 is a null token.
 --]]
-function RefExLM:getTarget(gt_sequence)
+function RefExpLM:getTarget(gt_sequence)
   -- Make sure it's on CPU since we will loop over it
   local gt_sequence_long = gt_sequence:long()
   local N, T = gt_sequence:size(1), gt_sequence:size(2)
@@ -192,7 +192,7 @@ end
 --[[
 image_vectors: N x D
 --]]
-function RefExLM:beamsearch(image_vectors, beam_size)
+function RefExpLM:beamsearch(image_vectors, beam_size)
   beam_size = beam_size or 20
   local Done_beams = {}
   local N, T = image_vectors:size(1), self.seq_length
@@ -355,7 +355,7 @@ end
 
 
 
-function RefExLM:sample(image_vectors)
+function RefExpLM:sample(image_vectors)
   local N, T = image_vectors:size(1), self.seq_length
   local seq = torch.LongTensor(N, T):zero()
   local softmax = nn.SoftMax():type(image_vectors:type())
@@ -413,7 +413,7 @@ function RefExLM:sample(image_vectors)
 end
 
 
-function RefExLM:updateGradInput(input, gradOutput)
+function RefExpLM:updateGradInput(input, gradOutput)
   if self.recompute_backward then
     self:backward(input, gradOutput)
   end
@@ -421,17 +421,18 @@ function RefExLM:updateGradInput(input, gradOutput)
 end
 
 
-function RefExLM:accGradParameters(input, gradOutput, scale)
+function RefExpLM:accGradParameters(input, gradOutput, scale)
   if self.recompute_backward then
     self:backward(input, gradOutput, scale)
   end
 end
 
 
-function RefExLM:backward(input, gradOutput, scale)
+function RefExpLM:backward(input, gradOutput, scale)
   assert(self._forward_sampled == false, 'cannot backprop through sampling')
   assert(scale == nil or scale == 1.0)
   self.recompute_backward = false
+  print("here")
   local net_input = {input[1], self._gt_with_start}
   self.gradInput = self.net:backward(net_input, gradOutput, scale)
   self.gradInput[2] = input[2].new(#input[2]):zero()
@@ -439,29 +440,29 @@ function RefExLM:backward(input, gradOutput, scale)
 end
 
 
-function RefExLM:parameters()
+function RefExpLM:parameters()
   return self.net:parameters()
 end
 
 
-function RefExLM:training()
+function RefExpLM:training()
   parent.training(self)
   self.net:training()
 end
 
 
-function RefExLM:evaluate()
+function RefExpLM:evaluate()
   parent.evaluate(self)
   self.net:evaluate()
 end
 
 
-function RefExLM:clearState()
+function RefExpLM:clearState()
   self.net:clearState()
 end
 
 
-function RefExLM:parameters()
+function RefExpLM:parameters()
   return self.net:parameters()
 end
 
@@ -469,7 +470,7 @@ end
 ------------------------------------------------------------------------
 -- Licheng's layers
 ------------------------------------------------------------------------
-function RefExLM:sample_with_hidden(image_vectors)
+function RefExpLM:sample_with_hidden(image_vectors)
   local N, T = image_vectors:size(1), self.seq_length
   local seq = torch.LongTensor(N, T):zero()
   local endH = torch.zeros(N, self.rnn_size):type(image_vectors:type())
@@ -538,7 +539,7 @@ input:
 output:
 - endH: (N, rnn_size)
 ]]
-function RefExLM:extract_hidden(image_vectors, seq)
+function RefExpLM:extract_hidden(image_vectors, seq)
   local N = image_vectors:size(1)
   assert(N == seq:size(1), 'image vectors and seq are not of same batch size.')
   local T = self.seq_length

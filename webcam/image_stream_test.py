@@ -130,7 +130,7 @@ def pub_image():
     imgs.append(img)
     msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     if build_map:
-        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 300, 40, 40, 0.7, 0.3, True)
+        goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 240, 40, 40, 0.7, 0.3, True)
         # goal = action_controller.msg.DenseCaptionGoal(1, msg_frame, 720, 20, 20, 0.7, 0.3, True)
         client.send_goal(goal, done_cb=done_cb)
         client.wait_for_result()    
