@@ -29,9 +29,9 @@ cmd:option('-checkpoint',
   'data/models/densecap/densecap-pretrained-vgg16.t7')
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
-cmd:option('-model_image_size', 150)
-cmd:option('-num_proposals', 40)
-cmd:option('-boxes_to_show', 40)
+cmd:option('-model_image_size', 720)
+cmd:option('-num_proposals', 1000)
+cmd:option('-boxes_to_show', 25)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
 cmd:option('-timing', 1)
@@ -39,7 +39,7 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
-cmd:option('-final_nms_thresh', 0.3)
+cmd:option('-final_nms_thresh', 0.1)
 cmd:option('-use_cudnn', 1)
 
 ros.init('densecap_actionserver')
@@ -86,7 +86,8 @@ local function run_model(opt, info, model, img_caffe, frame_id, store_features)
     model.timing = opt.detailed_timing
   end
 
-  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
+  -- local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:float())  
 
   if store_features then
     history_feats[frame_id] = feats:type('torch.LongTensor')
@@ -360,7 +361,8 @@ as_caption:start()
 as_query:start()
 
 opt = cmd:parse(arg)
-dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+-- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+dtype, use_cudnn = utils.setup_gpus(-1, 0)
 
 -- Load the checkpoint
 print('loading checkpoint from ' .. opt.checkpoint)
