@@ -26,7 +26,7 @@ function DenseCapModel:__init(opt)
   opt.cnn_name = utils.getopt(opt, 'cnn_name', 'vgg-16')
   opt.backend = utils.getopt(opt, 'backend', 'cudnn')
   opt.path_offset = utils.getopt(opt, 'path_offset', '')
-  opt.dtype = utils.getopt(opt, 'dtype', 'torch.CudaTensor')
+  opt.dtype = utils.getopt(opt, 'dtype', 'torch.FloatTensor')
   opt.vocab_size = utils.getopt(opt, 'vocab_size')
   opt.std = utils.getopt(opt, 'std', 0.01) -- Used to initialize new layers
 
@@ -357,7 +357,7 @@ end
 --[[
 -- language_query 
 --]]
-function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
+function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold, k)
 
   local similarity_table = {}
 
@@ -385,7 +385,7 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
 
   local V = self.nets.language_model.vocab_size
   local T = self.nets.language_model.seq_length
-  local query_seq = torch.LongTensor(1, T):type('torch.CudaTensor')
+  local query_seq = torch.LongTensor(1, T):type('torch.FloatTensor')
 
   for i=1,query_seq:size(1) do
     for j=1,T do
@@ -402,8 +402,8 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     local id = similarity_table[b][2]
     local box_idx = similarity_table[b][3]
 
-    local boxes = history_boxes_xcycwh[id]:sub(box_idx, box_idx):type('torch.CudaTensor')
-    local feats = history_feats[id]:sub(box_idx, box_idx):type('torch.CudaTensor')
+    local boxes = history_boxes_xcycwh[id]:sub(box_idx, box_idx):type('torch.FloatTensor')
+    local feats = history_feats[id]:sub(box_idx, box_idx):type('torch.FloatTensor')
 
     -- run model forward
     local lm_output = self.nets.language_model:forward{feats, query_seq}
@@ -441,13 +441,14 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   -- return min_id, history_boxes_xywh[min_id]:sub(min_idx, min_idx), loss, {query}
 
   -- get top k captioning scores
-  local k = 3
   table.sort(similarity_table, compare_loss)
 
   local top_k_ids = torch.LongTensor(k)
   local top_k_losses = torch.FloatTensor(k)
   local top_k_boxes = torch.FloatTensor(k, 4)
   local top_k_meteor_ranks = torch.LongTensor(k)
+  local top_k_feats = torch.FloatTensor(k, 4096)
+  local top_k_orig_idx = torch.LongTensor(k)
   
   for b = 1,k do
     -- if history_boxes_xywh[id] ~= nil then 
@@ -455,15 +456,18 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     local idx = similarity_table[b][3]
     local loss = similarity_table[b][5]
     local meteor_rank = similarity_table[b][6]
+    local orig_caption = similarity_table[b][4]
 
     top_k_ids[b] = id
     top_k_losses[b] = loss
     top_k_boxes[b] = history_boxes_xywh[id]:sub(idx, idx)
     top_k_meteor_ranks[b] = meteor_rank
+    top_k_feats[b] = history_feats[id]:sub(idx, idx)
+    top_k_orig_idx[b] = idx
     -- end
   end
 
-  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time
+  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx
 
 end
 
@@ -474,7 +478,7 @@ end
 
 --   local V = self.nets.language_model.vocab_size
 --   local T = self.nets.language_model.seq_length
---   local query_seq = torch.LongTensor(boxes:size(1), T):type('torch.CudaTensor')
+--   local query_seq = torch.LongTensor(boxes:size(1), T):type('torch.FloatTensor')
 
 --   for i=1,query_seq:size(1) do
 --     for j=1,T do

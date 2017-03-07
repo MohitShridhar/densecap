@@ -39,7 +39,7 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
-cmd:option('-final_nms_thresh', 0.1)
+cmd:option('-final_nms_thresh', 0.05)
 cmd:option('-use_cudnn', 1)
 
 ros.init('densecap_actionserver')
@@ -90,9 +90,9 @@ local function run_model(opt, info, model, img_caffe, frame_id, store_features)
   local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:float())  
 
   if store_features then
-    history_feats[frame_id] = feats:type('torch.LongTensor')
+    history_feats[frame_id] = feats:type('torch.FloatTensor')
     history_captions[frame_id] = captions
-    history_boxes_xcycwh[frame_id] = boxes_xcycwh:type('torch.LongTensor')
+    history_boxes_xcycwh[frame_id] = boxes_xcycwh:type('torch.FloatTensor')
   end
 
   if opt.timing == 1 then
@@ -130,7 +130,8 @@ local function image_query(opt, info, model, query, min_loss_threshold)
     model.timing = opt.detailed_timing
   end
 
-  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold)
+  k = 3
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold, k)
 
   if opt.timing == 1 then
     cutorch.synchronize()

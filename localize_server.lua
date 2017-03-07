@@ -38,7 +38,7 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
-cmd:option('-final_nms_thresh', 0.1)
+cmd:option('-final_nms_thresh', 0.05)
 cmd:option('-use_cudnn', 1)
 
 ros.init('localize_actionserver')
@@ -64,6 +64,8 @@ local function Localize_Action_Server(goal_handle)
   ros.INFO("Localize_Action_Server")
   local g = goal_handle:getGoal().goal
 
+  print (g)
+
   -- Convert to torch image tensor
   local img_tensor = torch.reshape(g.input.data, torch.LongStorage{g.input.height, g.input.width, 3})
   local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
@@ -86,6 +88,12 @@ local function Localize_Action_Server(goal_handle)
   local scale = img_orig:size(2) / img_caffe:size(3)
   boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
 
+  -- store results for future queries
+  history_feats[g.frame_id] = feats:type('torch.FloatTensor')
+  history_captions[g.frame_id] = captions
+  history_boxes_xcycwh[g.frame_id] = boxes_xcycwh:type('torch.FloatTensor')
+  history_boxes_xywh[g.frame_id] = boxes_xywh:type('torch.FloatTensor')
+
   -- return results
   local r = goal_handle:createResult()
   r.fc7_img = f_roi_codes:reshape(f_roi_codes:size(2)):float()
@@ -97,15 +105,44 @@ local function Localize_Action_Server(goal_handle)
   goal_handle:setSucceeded(r, 'done')
 end
 
+
+local function Query_Action_Goal(goal_handle)
+  ros.INFO("Query_Action_Goal")
+  local g = goal_handle:getGoal().goal
+
+  print (g)
+
+  -- TODO IMPORTANT: check if history is available, otherwise reject the goal
+  goal_handle:setAccepted('yip')
+
+  -- local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = search(g.query, g.min_loss_threshold)
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, g.query, g.min_loss_threshold, g.k)
+
+  local r = goal_handle:createResult()
+  r.frame_ids = top_k_ids:reshape(top_k_ids:size(1)):int()
+  r.captioning_losses = top_k_losses:reshape(top_k_losses:size(1)):float()
+  r.boxes = top_k_boxes:reshape(top_k_boxes:size(1) * top_k_boxes:size(2)):float()
+  r.meteor_ranks = top_k_meteor_ranks:reshape(top_k_meteor_ranks:size(1)):int()
+  r.search_time = search_time
+  r.fc7_vecs = top_k_feats:reshape(top_k_feats:size(1) * top_k_feats:size(2)):float()
+  r.orig_idx = top_k_orig_idx
+
+  goal_handle:setSucceeded(r, 'done')
+end
+
+
 opt = cmd:parse(arg)
 
 -- Setup Localization Server
 local as_localize_server = actionlib.ActionServer(nh, 'dense_localize', 'action_controller/Localize')
+local as_query_server = actionlib.ActionServer(nh, 'localize_query', 'action_controller/LocalizeQuery')
+
 as_localize_server:registerGoalCallback(Localize_Action_Server)
+as_query_server:registerGoalCallback(Query_Action_Goal)
 
-
-print('Starting Dense Localization action server...')
+print('Starting Dense Localization and Query action server...')
 as_localize_server:start()
+as_query_server:start()
 
 opt = cmd:parse(arg)
 -- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
@@ -127,7 +164,11 @@ model:setTestArgs{
 }
 model:evaluate()
 
-
+-- NOTE: linear space complexity
+history_feats = {}
+history_captions = {}
+history_boxes_xcycwh = {}
+history_boxes_xywh = {}
 
 timer = torch.Timer()
 
@@ -138,6 +179,7 @@ while ros.ok() do
 end
 
 as_localize_server:shutdown()
+as_query_server:shutdown()
 nh:shutdown()
 server:shutdown()
 ros.shutdown()

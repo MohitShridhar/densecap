@@ -123,10 +123,10 @@ def pub_image():
     #     client.send_goal(goal, done_cb=done_cb)
     #     client.wait_for_result()    
 
-    build_map = False
+    # build_map = False
 
     # Single Tabel Test
-    img = cv2.imread('table_medium.png',cv2.IMREAD_COLOR)
+    img = cv2.imread('table_medium_2.png',cv2.IMREAD_COLOR)
     imgs.append(img)
     msg_frame = CvBridge().cv2_to_imgmsg(img, "bgr8")
     if build_map:
@@ -136,10 +136,10 @@ def pub_image():
         client.wait_for_result()    
 
     # Query test
-    query = "the cereal box"
+    query = "the red box"
     client = actionlib.SimpleActionClient('dense_query', action_controller.msg.DenseImageQueryAction)
     client.wait_for_server()    
-    goal = action_controller.msg.DenseImageQueryGoal(query, 6.0)
+    goal = action_controller.msg.DenseImageQueryGoalf(query, 6.0)
     client.send_goal(goal, done_cb=query_done_cb)
     client.wait_for_result()
 
@@ -152,7 +152,7 @@ def pub_image():
         x1 = int(result.boxes[0+offset])
         y1 = int(result.boxes[1+offset])
         x2 = int(result.boxes[0+offset]+result.boxes[2+offset])
-        y2 = int(result.boxes[1+offset]+result.boxes[2+offset])
+        y2 = int(result.boxes[1+offset]+result.boxes[3+offset])
 
         cv2.namedWindow('result', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('result', 640, 480)
