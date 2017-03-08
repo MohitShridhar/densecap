@@ -130,19 +130,56 @@ local function Query_Action_Goal(goal_handle)
   goal_handle:setSucceeded(r, 'done')
 end
 
+local function Extract_Action_Goal(goal_handle)
+  ros.INFO("Extract_Action_Goal")
+  local g = goal_handle:getGoal().goal
+
+  print (g)
+
+  -- Convert to torch image tensor
+  local img_tensor = torch.reshape(g.input.data, torch.LongStorage{g.input.height, g.input.width, 3})
+  local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  -- local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  local img = img_gm:toTensor('double','RGB', 'DHW')
+  local img_orig, img_caffe = grab_frame(opt, img)
+
+  goal_handle:setAccepted('yip')
+
+  if (g.input.width > g.input.height) then
+    opt.model_image_size = g.input.width
+  else
+    opt.model_image_size = g.input.height
+  end
+  
+  -- compute fc7 features for whole image
+  local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
+  local out = model:forward_boxes(img_caffe:float(), whole_img_roi)
+  local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
+
+  -- return results
+  local r = goal_handle:createResult()
+  r.fc7_vecs = f_roi_codes:reshape(f_roi_codes:size(2)):float()
+
+  goal_handle:setSucceeded(r, 'done')
+end
+
+
 
 opt = cmd:parse(arg)
 
 -- Setup Localization Server
 local as_localize_server = actionlib.ActionServer(nh, 'dense_localize', 'action_controller/Localize')
 local as_query_server = actionlib.ActionServer(nh, 'localize_query', 'action_controller/LocalizeQuery')
+local as_extract_server = actionlib.ActionServer(nh, 'extract_features', 'action_controller/ExtractFeatures')
 
 as_localize_server:registerGoalCallback(Localize_Action_Server)
 as_query_server:registerGoalCallback(Query_Action_Goal)
+as_extract_server:registerGoalCallback(Extract_Action_Goal)
 
 print('Starting Dense Localization and Query action server...')
 as_localize_server:start()
 as_query_server:start()
+as_extract_server:start()
 
 opt = cmd:parse(arg)
 -- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
@@ -180,6 +217,7 @@ end
 
 as_localize_server:shutdown()
 as_query_server:shutdown()
+as_extract_server:shutdown()
 nh:shutdown()
 server:shutdown()
 ros.shutdown()
