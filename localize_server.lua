@@ -88,6 +88,13 @@ local function Localize_Action_Server(goal_handle)
   local scale = img_orig:size(2) / img_caffe:size(3)
   boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
 
+  if clear_history_every_localize then
+    history_feats = {}
+    history_captions = {}
+    history_boxes_xcycwh = {}
+    history_boxes_xywh = {}
+  end
+
   -- store results for future queries
   history_feats[g.frame_id] = feats:type('torch.FloatTensor')
   history_captions[g.frame_id] = captions
@@ -116,7 +123,7 @@ local function Query_Action_Goal(goal_handle)
   goal_handle:setAccepted('yip')
 
   -- local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time = search(g.query, g.min_loss_threshold)
-  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, g.query, g.min_loss_threshold, g.k)
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx, top_k_meteor_scores = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, g.query, g.min_loss_threshold, g.k)
 
   local r = goal_handle:createResult()
   r.frame_ids = top_k_ids:reshape(top_k_ids:size(1)):int()
@@ -125,7 +132,8 @@ local function Query_Action_Goal(goal_handle)
   r.meteor_ranks = top_k_meteor_ranks:reshape(top_k_meteor_ranks:size(1)):int()
   r.search_time = search_time
   r.fc7_vecs = top_k_feats:reshape(top_k_feats:size(1) * top_k_feats:size(2)):float()
-  r.orig_idx = top_k_orig_idx
+  r.orig_idx = top_k_orig_idx:reshape(top_k_orig_idx:size(1)):int()
+  r.meteor_scores = top_k_meteor_scores:reshape(top_k_meteor_scores:size(1)):float()
 
   goal_handle:setSucceeded(r, 'done')
 end
@@ -206,6 +214,8 @@ history_feats = {}
 history_captions = {}
 history_boxes_xcycwh = {}
 history_boxes_xywh = {}
+
+clear_history_every_localize = true
 
 timer = torch.Timer()
 

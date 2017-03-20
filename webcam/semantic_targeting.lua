@@ -131,7 +131,7 @@ local function image_query(opt, info, model, query, min_loss_threshold)
   end
 
   k = 3
-  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold, k)
+  local top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx, top_k_meteor_scores = model:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold, k)
 
   if opt.timing == 1 then
     cutorch.synchronize()

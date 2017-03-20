@@ -359,6 +359,9 @@ end
 --]]
 function DenseCapModel:language_query(history_feats, history_captions, history_boxes_xcycwh, history_boxes_xywh, query, min_loss_threshold, k)
 
+  -- print(self.nets.recog_base:getParameters())
+
+
   local similarity_table = {}
 
   -- sort existing captions according to METEOR scores
@@ -373,7 +376,7 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   -- for frame_id, captions in pairs(history_captions) do
   --   for n, caption in pairs(captions) do
   --     local cosine_score = self:cosine_similarity(query, caption)
-  --     similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10} -- initialize loss to a large number 
+  --     similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10, -1} -- initialize loss to a large number 
   --   end
   -- end 
   -- table.sort(similarity_table, compare_cosine_score)
@@ -419,13 +422,13 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
       similarity_table[b][5] = captioning_loss
       similarity_table[b][6] = b
 
-      print (captioning_loss, similarity_table[b][4], similarity_table[b][1])
+      -- print (captioning_loss, similarity_table[b][4], similarity_table[b][1])
       -- print (captioning_loss)
       -- print (similarity_table[b][4])
     end
 
-    -- if (captioning_loss < min_loss_threshold) then
-    if (captioning_loss < min_loss_threshold) or b >= math.ceil(#similarity_table/10) then
+    if (captioning_loss < min_loss_threshold) then
+    -- if (captioning_loss < min_loss_threshold) or b >= math.ceil(#similarity_table/10) then
       break
     end
 
@@ -443,8 +446,14 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   -- get top k captioning scores
   table.sort(similarity_table, compare_loss)
 
+  -- Debug
+  for b = 1,#similarity_table do
+      print (similarity_table[b][5], similarity_table[b][4])
+  end
+
   local top_k_ids = torch.LongTensor(k)
   local top_k_losses = torch.FloatTensor(k)
+  local top_k_meteor_scores = torch.FloatTensor(k)
   local top_k_boxes = torch.FloatTensor(k, 4)
   local top_k_meteor_ranks = torch.LongTensor(k)
   local top_k_feats = torch.FloatTensor(k, 4096)
@@ -455,19 +464,21 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     local id = similarity_table[b][2]
     local idx = similarity_table[b][3]
     local loss = similarity_table[b][5]
+    local meteor_score = similarity_table[b][1]
     local meteor_rank = similarity_table[b][6]
     local orig_caption = similarity_table[b][4]
 
     top_k_ids[b] = id
     top_k_losses[b] = loss
+    top_k_meteor_scores[b] = meteor_score
     top_k_boxes[b] = history_boxes_xywh[id]:sub(idx, idx)
     top_k_meteor_ranks[b] = meteor_rank
     top_k_feats[b] = history_feats[id]:sub(idx, idx)
-    top_k_orig_idx[b] = idx
+    top_k_orig_idx[b] = idx - 1 -- lua index 1... to other language indexes 0....
     -- end
   end
 
-  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx
+  return top_k_ids, top_k_boxes, top_k_losses, top_k_meteor_ranks, search_time, top_k_feats, top_k_orig_idx, top_k_meteor_scores
 
 end
 
