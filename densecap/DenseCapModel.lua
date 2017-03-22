@@ -388,7 +388,7 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
 
   local V = self.nets.language_model.vocab_size
   local T = self.nets.language_model.seq_length
-  local query_seq = torch.LongTensor(1, T):type('torch.FloatTensor')
+  local query_seq = torch.LongTensor(1, T):type(dtype)
 
   for i=1,query_seq:size(1) do
     for j=1,T do
@@ -405,8 +405,8 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
     local id = similarity_table[b][2]
     local box_idx = similarity_table[b][3]
 
-    local boxes = history_boxes_xcycwh[id]:sub(box_idx, box_idx):type('torch.FloatTensor')
-    local feats = history_feats[id]:sub(box_idx, box_idx):type('torch.FloatTensor')
+    local boxes = history_boxes_xcycwh[id]:sub(box_idx, box_idx):type(dtype)
+    local feats = history_feats[id]:sub(box_idx, box_idx):type(dtype)
 
     -- run model forward
     local lm_output = self.nets.language_model:forward{feats, query_seq}
@@ -459,7 +459,9 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   local top_k_feats = torch.FloatTensor(k, 4096)
   local top_k_orig_idx = torch.LongTensor(k)
   
-  for b = 1,k do
+  k_adj = math.min(k, #similarity_table)
+
+  for b = 1,k_adj do
     -- if history_boxes_xywh[id] ~= nil then 
     local id = similarity_table[b][2]
     local idx = similarity_table[b][3]

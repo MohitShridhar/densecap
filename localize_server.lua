@@ -29,7 +29,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 720)
-cmd:option('-num_proposals', 1000)
+cmd:option('-num_proposals', 100)
 cmd:option('-boxes_to_show', 40)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -38,7 +38,9 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
-cmd:option('-final_nms_thresh', 0.05)
+cmd:option('-final_nms_thresh', 0.3)
+-- cmd:option('-final_nms_thresh', 0.05)
+
 cmd:option('-use_cudnn', 1)
 
 ros.init('localize_actionserver')
@@ -50,7 +52,8 @@ spinner:start()
 local function grab_frame(opt, img_orig)
 
   -- local img_orig = img
-  local img = image.scale(img_orig, opt.model_image_size)
+  -- local img = image.scale(img_orig, opt.model_image_size)
+  local img = img_orig
   local img_caffe = img:index(1, torch.LongTensor{3, 2, 1}):mul(255)
   local vgg_mean = torch.Tensor{103.939, 116.779, 123.68}
   img_caffe:add(-1, vgg_mean:view(3, 1, 1):expandAs(img_caffe))
@@ -76,11 +79,11 @@ local function Localize_Action_Server(goal_handle)
   
   -- compute boxes
   local img_orig, img_caffe = grab_frame(opt, img)
-  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:float())
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
 
   -- compute fc7 features for whole image
   local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
-  local out = model:forward_boxes(img_caffe:float(), whole_img_roi)
+  local out = model:forward_boxes(img_caffe:cuda(), whole_img_roi:type(dtype))
   local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
 
   -- scale boxes to image size
@@ -153,15 +156,15 @@ local function Extract_Action_Goal(goal_handle)
 
   goal_handle:setAccepted('yip')
 
-  if (g.input.width > g.input.height) then
-    opt.model_image_size = g.input.width
-  else
-    opt.model_image_size = g.input.height
-  end
+  -- if (g.input.width > g.input.height) then
+  --   opt.model_image_size = g.input.width
+  -- else
+  --   opt.model_image_size = g.input.height
+  -- end
   
   -- compute fc7 features for whole image
-  local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
-  local out = model:forward_boxes(img_caffe:float(), whole_img_roi)
+  local whole_img_roi = torch.FloatTensor{{0.0, 0.0, g.input.width - 1.0, g.input.height - 1.0}}
+  local out = model:forward_boxes(img_caffe:cuda(), whole_img_roi:type(dtype))
   local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
 
   -- return results
@@ -190,8 +193,8 @@ as_query_server:start()
 as_extract_server:start()
 
 opt = cmd:parse(arg)
--- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
-dtype, use_cudnn = utils.setup_gpus(-1, 0)
+dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+-- dtype, use_cudnn = utils.setup_gpus(-1, 0)
 
 
 -- Load the checkpoint
@@ -210,12 +213,12 @@ model:setTestArgs{
 model:evaluate()
 
 -- NOTE: linear space complexity
+clear_history_every_localize = true
+
 history_feats = {}
 history_captions = {}
 history_boxes_xcycwh = {}
 history_boxes_xywh = {}
-
-clear_history_every_localize = true
 
 timer = torch.Timer()
 
