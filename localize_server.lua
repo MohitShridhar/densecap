@@ -156,20 +156,34 @@ local function Extract_Action_Goal(goal_handle)
 
   goal_handle:setAccepted('yip')
 
-  -- if (g.input.width > g.input.height) then
-  --   opt.model_image_size = g.input.width
-  -- else
-  --   opt.model_image_size = g.input.height
-  -- end
-  
-  -- compute fc7 features for whole image
-  local whole_img_roi = torch.FloatTensor{{0.0, 0.0, g.input.width - 1.0, g.input.height - 1.0}}
-  local out = model:forward_boxes(img_caffe:cuda(), whole_img_roi:type(dtype))
+  -- compute fc7 features for boxes
+  local boxes_xcycwh = torch.reshape(g.boxes, g.boxes:size(1)/4, 4)
+  local out = model:forward_boxes(img_caffe:cuda(), boxes_xcycwh:type(dtype))
   local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
+
+  -- scale boxes to image size
+  boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
+  local scale = img_orig:size(2) / img_caffe:size(3)
+  boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
+
+  if clear_history_every_localize then
+    history_feats = {}
+    history_captions = {}
+    history_boxes_xcycwh = {}
+    history_boxes_xywh = {}
+  end
+
+  -- store results for future queries
+  history_feats[g.frame_id] = f_roi_codes:type('torch.FloatTensor')
+  history_captions[g.frame_id] = f_captions
+  history_boxes_xcycwh[g.frame_id] = boxes_xcycwh:type('torch.FloatTensor')
+  history_boxes_xywh[g.frame_id] = boxes_xywh:type('torch.FloatTensor')
 
   -- return results
   local r = goal_handle:createResult()
-  r.fc7_vecs = f_roi_codes:reshape(f_roi_codes:size(2)):float()
+  r.fc7_vecs = f_roi_codes:reshape(f_roi_codes:size(1) * f_roi_codes:size(2)):float()
+  r.scores = f_objectness_scores:reshape(f_objectness_scores:size(1)):float()
+  r.captions = f_captions
 
   goal_handle:setSucceeded(r, 'done')
 end
