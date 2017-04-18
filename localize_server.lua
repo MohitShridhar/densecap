@@ -29,7 +29,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 720)
-cmd:option('-num_proposals', 100)
+cmd:option('-num_proposals', 500)
 cmd:option('-boxes_to_show', 40)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -38,8 +38,8 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
-cmd:option('-final_nms_thresh', 0.3)
--- cmd:option('-final_nms_thresh', 0.05)
+-- cmd:option('-final_nms_thresh', 0.3)
+cmd:option('-final_nms_thresh', 0.05)
 
 cmd:option('-use_cudnn', 1)
 
@@ -79,11 +79,11 @@ local function Localize_Action_Server(goal_handle)
   
   -- compute boxes
   local img_orig, img_caffe = grab_frame(opt, img)
-  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:cuda())
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:type(dtype))
 
   -- compute fc7 features for whole image
   local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
-  local out = model:forward_boxes(img_caffe:cuda(), whole_img_roi:type(dtype))
+  local out = model:forward_boxes(img_caffe:type(dtype), whole_img_roi:type(dtype))
   local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
 
   -- scale boxes to image size
@@ -158,7 +158,7 @@ local function Extract_Action_Goal(goal_handle)
 
   -- compute fc7 features for boxes
   local boxes_xcycwh = torch.reshape(g.boxes, g.boxes:size(1)/4, 4)
-  local out = model:forward_boxes(img_caffe:cuda(), boxes_xcycwh:type(dtype))
+  local out = model:forward_boxes(img_caffe:type(dtype), boxes_xcycwh:type(dtype))
   local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
 
   -- scale boxes to image size
@@ -207,8 +207,8 @@ as_query_server:start()
 as_extract_server:start()
 
 opt = cmd:parse(arg)
-dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
--- dtype, use_cudnn = utils.setup_gpus(-1, 0)
+-- dtype, use_cudnn = utils.setup_gpus(opt.gpu, opt.use_cudnn)
+dtype, use_cudnn = utils.setup_gpus(-1, 0)
 
 
 -- Load the checkpoint
