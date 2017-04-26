@@ -365,21 +365,20 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   local similarity_table = {}
 
   -- sort existing captions according to METEOR scores
-  local meteor_scores, records = self:compute_meteor(query, history_captions)
-  for i=1, #meteor_scores do
-    similarity_table[#similarity_table + 1] = {meteor_scores[i], records[i].frame_id, records[i].n, records[i].caption, 10e10, -1}
-  end
-
-  table.sort(similarity_table, compare_meteor_score)
+  -- local meteor_scores, records = self:compute_meteor(query, history_captions)
+  -- for i=1, #meteor_scores do
+  --   similarity_table[#similarity_table + 1] = {meteor_scores[i], records[i].frame_id, records[i].n, records[i].caption, 10e10, -1}
+  -- end
+  -- table.sort(similarity_table, compare_meteor_score)
 
   -- sort existing captions according to COSINE similarity
-  -- for frame_id, captions in pairs(history_captions) do
-  --   for n, caption in pairs(captions) do
-  --     local cosine_score = self:cosine_similarity(query, caption)
-  --     similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10, -1} -- initialize loss to a large number 
-  --   end
-  -- end 
-  -- table.sort(similarity_table, compare_cosine_score)
+  for frame_id, captions in pairs(history_captions) do
+    for n, caption in pairs(captions) do
+      local cosine_score = self:cosine_similarity(query, caption)
+      similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10, -1} -- initialize loss to a large number 
+    end
+  end 
+  table.sort(similarity_table, compare_cosine_score)
 
   -- print (inspect(similarity_table))
 
