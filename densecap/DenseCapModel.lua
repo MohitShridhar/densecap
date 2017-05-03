@@ -450,15 +450,16 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
       print (similarity_table[b][5], similarity_table[b][4])
   end
 
-  local top_k_ids = torch.LongTensor(k)
-  local top_k_losses = torch.FloatTensor(k)
-  local top_k_meteor_scores = torch.FloatTensor(k)
-  local top_k_boxes = torch.FloatTensor(k, 4)
-  local top_k_meteor_ranks = torch.LongTensor(k)
-  local top_k_feats = torch.FloatTensor(k, 4096)
-  local top_k_orig_idx = torch.LongTensor(k)
-  
   k_adj = math.min(k, #similarity_table)
+
+  local top_k_ids = torch.LongTensor(k_adj)
+  local top_k_losses = torch.FloatTensor(k_adj)
+  local top_k_meteor_scores = torch.FloatTensor(k_adj)
+  local top_k_boxes = torch.FloatTensor(k_adj, 4)
+  local top_k_meteor_ranks = torch.LongTensor(k_adj)
+  local top_k_feats = torch.FloatTensor(k_adj, 4096)
+  local top_k_orig_idx = torch.LongTensor(k_adj)
+
 
   for b = 1,k_adj do
     -- if history_boxes_xywh[id] ~= nil then 
