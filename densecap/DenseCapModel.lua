@@ -374,11 +374,11 @@ function DenseCapModel:language_query(history_feats, history_captions, history_b
   -- sort existing captions according to COSINE similarity
   for frame_id, captions in pairs(history_captions) do
     for n, caption in pairs(captions) do
-      local cosine_score = self:cosine_similarity(query, caption)
+      local cosine_score = 0 -- self:cosine_similarity(query, caption) NOTE: DISABLED
       similarity_table[ #similarity_table +1 ] = {cosine_score, frame_id, n, caption, 10e10, -1} -- initialize loss to a large number 
     end
   end 
-  table.sort(similarity_table, compare_cosine_score)
+  -- table.sort(similarity_table, compare_cosine_score)
 
   -- print (inspect(similarity_table))
 
