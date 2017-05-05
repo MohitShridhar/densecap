@@ -29,7 +29,7 @@ cmd:option('-checkpoint',
 cmd:option('-display_image_height', 640)
 cmd:option('-display_image_width', 480)
 cmd:option('-model_image_size', 720)
-cmd:option('-num_proposals', 500)
+cmd:option('-num_proposals', 1000) -- 500
 cmd:option('-boxes_to_show', 40)
 cmd:option('-webcam_fps', 1)
 cmd:option('-gpu', 0)
@@ -38,8 +38,8 @@ cmd:option('-detailed_timing', 0)
 cmd:option('-text_size', 2)
 cmd:option('-box_width', 2)
 cmd:option('-rpn_nms_thresh', 0.7)
--- cmd:option('-final_nms_thresh', 0.3)
-cmd:option('-final_nms_thresh', 0.05)
+cmd:option('-final_nms_thresh', 0.3)
+-- cmd:option('-final_nms_thresh', 0.05)
 
 cmd:option('-use_cudnn', 1)
 
