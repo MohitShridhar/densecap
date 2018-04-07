@@ -104,6 +104,11 @@ function LM:decodeSequence(seq)
 end
 
 
+function LM:print_dict()
+   for i = 1, self.vocab_size do
+      print (self.idx_to_token[i])
+   end
+end
 
 function LM:encode(text)
   local indexes = {}
@@ -492,9 +497,13 @@ function LM:sample_with_hidden(image_vectors)
   local image_vecs_encoded = self.image_encoder:forward(image_vectors)
   self.rnn:forward(image_vecs_encoded)
 
+  -- local all_word_probs = torch.LongTensor(N, T, self.vocab_size+1):zero()
+
   -- Now feed words through RNN
   for t = 1, T do
     local words = nil
+
+    -- local word_probs = torch.LongTensor(N, self.vocab_size+1):zero()
     if t == 1 then
       -- On the first timestep, feed START tokens
       words = torch.LongTensor(N, 1):fill(self.START_TOKEN)
@@ -512,11 +521,16 @@ function LM:sample_with_hidden(image_vectors)
       idx = torch.multinomial(probs, 1):view(-1):long()
     end
     seq[{{}, t}]:copy(idx)
+
+    -- print (scores:size())
+    -- print (word_probs:size())
+    -- word_probs = scores
     -- check if we just produced <end> for the first time
     for n = 1, N do
       if seq[{ n, t }] == self.END_TOKEN and torch.sum(endH[n]) == 0 then
         endH[n] = self.rnn:get(self.num_layers*2-1).output[{ n, 1, {} }]
       end
+      -- all_word_probs[n][t] = word_probs[n]
     end
   end
 

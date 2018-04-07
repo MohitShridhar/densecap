@@ -79,7 +79,7 @@ local function Localize_Action_Server(goal_handle)
   
   -- compute boxes
   local img_orig, img_caffe = grab_frame(opt, img)
-  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:type(dtype))
+  local boxes_xcycwh, scores, captions, feats, word_probs = model:forward_test(img_caffe:type(dtype))
 
   -- compute fc7 features for whole image
   local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
@@ -108,6 +108,62 @@ local function Localize_Action_Server(goal_handle)
   local r = goal_handle:createResult()
   r.fc7_img = f_roi_codes:reshape(f_roi_codes:size(2)):float()
   r.fc7_vecs = feats:reshape(feats:size(1) * feats:size(2)):float()
+  r.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
+  r.scores = scores:reshape(scores:size(1)):float()
+  r.captions = captions
+
+  goal_handle:setSucceeded(r, 'done')
+end
+
+
+local function Localize_Probs_Action_Server(goal_handle)
+  ros.INFO("Localize_Probs_Action_Server")
+  local g = goal_handle:getGoal().goal
+
+  print (g)
+
+  -- Convert to torch image tensor
+  local img_tensor = torch.reshape(g.input.data, torch.LongStorage{g.input.height, g.input.width, 3})
+  local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  -- local img_gm = gm.Image(img_tensor, 'RGB', 'DWH')
+  local img = img_gm:toTensor('double','RGB', 'DHW')
+
+  goal_handle:setAccepted('yip')
+  
+  -- compute boxes
+  local img_orig, img_caffe = grab_frame(opt, img)
+  local boxes_xcycwh, scores, captions, feats, word_probs = model:forward_test(img_caffe:type(dtype))
+  local probs_copy = torch.Tensor(word_probs:size()):copy(word_probs)
+  -- print (probs_copy:size())
+
+  -- compute fc7 features for whole image
+  local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
+  local out = model:forward_boxes(img_caffe:type(dtype), whole_img_roi:type(dtype))
+  local f_objectness_scores, f_seqs, f_roi_codes, f_hidden_codes, f_captions = unpack(out)
+
+  -- scale boxes to image size
+  boxes_xywh = box_utils.xcycwh_to_xywh(boxes_xcycwh)
+  local scale = img_orig:size(2) / img_caffe:size(3)
+  boxes_xywh = box_utils.scale_boxes_xywh(boxes_xywh, scale)
+
+  if clear_history_every_localize then
+    history_feats = {}
+    history_captions = {}
+    history_boxes_xcycwh = {}
+    history_boxes_xywh = {}
+  end
+
+  -- store results for future queries
+  history_feats[g.frame_id] = feats:type('torch.FloatTensor')
+  history_captions[g.frame_id] = captions
+  history_boxes_xcycwh[g.frame_id] = boxes_xcycwh:type('torch.FloatTensor')
+  history_boxes_xywh[g.frame_id] = boxes_xywh:type('torch.FloatTensor')
+
+  -- return results
+  local r = goal_handle:createResult()
+  r.fc7_img = f_roi_codes:reshape(f_roi_codes:size(2)):float()
+  r.fc7_vecs = feats:reshape(feats:size(1) * feats:size(2)):float()
+  r.word_probs = probs_copy:reshape(probs_copy:size(1) * probs_copy:size(2) * probs_copy:size(3)):float()
   r.boxes = boxes_xywh:reshape(boxes_xywh:size(1) * boxes_xywh:size(2)):float()
   r.scores = scores:reshape(scores:size(1)):float()
   r.captions = captions
@@ -194,15 +250,18 @@ opt = cmd:parse(arg)
 
 -- Setup Localization Server
 local as_localize_server = actionlib.ActionServer(nh, 'dense_localize', 'action_controller/Localize')
+local as_localize_probs_server = actionlib.ActionServer(nh, 'dense_localize_probs', 'action_controller/LocalizeProbs')
 local as_query_server = actionlib.ActionServer(nh, 'localize_query', 'action_controller/LocalizeQuery')
 local as_extract_server = actionlib.ActionServer(nh, 'extract_features', 'action_controller/ExtractFeatures')
 
 as_localize_server:registerGoalCallback(Localize_Action_Server)
+as_localize_probs_server:registerGoalCallback(Localize_Probs_Action_Server)
 as_query_server:registerGoalCallback(Query_Action_Goal)
 as_extract_server:registerGoalCallback(Extract_Action_Goal)
 
 print('Starting Dense Localization and Query action server...')
 as_localize_server:start()
+as_localize_probs_server:start()
 as_query_server:start()
 as_extract_server:start()
 
@@ -243,6 +302,7 @@ while ros.ok() do
 end
 
 as_localize_server:shutdown()
+as_localize_probs_server:shutdown()
 as_query_server:shutdown()
 as_extract_server:shutdown()
 nh:shutdown()
