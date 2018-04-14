@@ -340,7 +340,7 @@ function DenseCapModel:forward_test(input)
   local captions = self.nets.language_model:decodeSequence(captions)
 
   -- compute token probabilties
-  local seqs, hidden_codes, word_probs = unpack(self.nets.language_model:sample_with_hidden(feats))
+  -- local seqs, hidden_codes, word_probs = unpack(self.nets.language_model:sample_with_hidden(feats))
     
   -- local indexes = self.nets.language_model:encode("the water bottle")
   -- local V = self.nets.language_model.vocab_size
@@ -356,7 +356,7 @@ function DenseCapModel:forward_test(input)
   -- local word_probs = self.nets.language_model:forward{feats, query_seq}
 
 
-  return final_boxes, objectness_scores, captions, feats, word_probs
+  return final_boxes, objectness_scores, captions, feats
 end
 
 function compare_cosine_score(a,b)
@@ -898,7 +898,7 @@ function DenseCapModel:forward_boxes(input, roi_boxes)
   local objectness_scores = self.nets.objectness_branch:forward(roi_codes)
   -- feed roi_codes to LSTM
   -- local captions = self.nets.language_model:forward{roi_codes, roi_codes.new()}
-  local seqs, hidden_codes, word_probs = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
+  local seqs, hidden_codes = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
   local captions = self.nets.language_model:decodeSequence(seqs)
 
   return {objectness_scores, seqs, roi_codes, hidden_codes, captions}
@@ -981,7 +981,7 @@ function DenseCapModel:extractAllFeatures(input)
   local objectness_scores = class_scores_float:index(1, idx):typeAs(self.output[1])
   local roi_codes = self.nets.recog_base.output:float():index(1, idx):typeAs(self.output[4])
   -- feed roi_codes to LSTM
-  local seqs, hidden_codes, word_probs = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
+  local seqs, hidden_codes = unpack(self.nets.language_model:sample_with_hidden(roi_codes))
   local captions = self.nets.language_model:decodeSequence(seqs)
 
   return {boxes_xcycwh, objectness_scores, seqs, roi_codes, hidden_codes, captions}

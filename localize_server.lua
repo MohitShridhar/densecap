@@ -79,7 +79,7 @@ local function Localize_Action_Server(goal_handle)
   
   -- compute boxes
   local img_orig, img_caffe = grab_frame(opt, img)
-  local boxes_xcycwh, scores, captions, feats, word_probs = model:forward_test(img_caffe:type(dtype))
+  local boxes_xcycwh, scores, captions, feats = model:forward_test(img_caffe:type(dtype))
 
   -- compute fc7 features for whole image
   local whole_img_roi = torch.FloatTensor{{1.0, 1.0, g.input.width*1.0, g.input.height*1.0}}
